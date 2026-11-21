@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SEOForge by Syeds Enterprises — SEO, Ads &amp; Links in One Place</title>
+<meta name="description" content="SEOForge v1: site audit, keyword explorer, rank tracker, link verifier, ad revenue hub and link marketplace for Syed Enterprises. Free data sources only, no invented numbers.">
+<style>
+  :root{
+    --teal:#0f766e; --teal-dark:#115e59; --ink:#1f2937; --muted:#6b7280;
+    --line:#e5e7eb; --bg:#f8fafc; --card:#ffffff; --warn:#b45309; --warn-bg:#fef3c7;
+    --bad:#b91c1c; --bad-bg:#fee2e2; --ok:#15803d; --ok-bg:#dcfce7; --radius:10px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink);line-height:1.5}
+  header{background:#0f172a;color:#fff;padding:14px 16px}
+  header .wrap{max-width:920px;margin:0 auto}
+  header h1{margin:0;font-size:20px;letter-spacing:.2px}
+  header h1 span{color:#2dd4bf}
+  header p{margin:2px 0 0;font-size:13px;color:#cbd5e1}
+  nav{background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:10}
+  nav .tabs{max-width:920px;margin:0 auto;display:flex;gap:4px;overflow-x:auto;padding:6px 8px;-webkit-overflow-scrolling:touch}
+  nav button{flex:0 0 auto;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:999px;padding:8px 14px;font-size:14px;cursor:pointer}
+  nav button.active{background:var(--teal);border-color:var(--teal);color:#fff;font-weight:600}
+  main{max-width:920px;margin:0 auto;padding:16px 12px 48px}
+  section.tab{display:none}
+  section.tab.active{display:block}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-bottom:14px}
+  .card h2{margin:0 0 6px;font-size:18px}
+  .card h3{margin:14px 0 6px;font-size:15px}
+  .muted{color:var(--muted);font-size:13px}
+  .note{background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:10px 12px;font-size:13px;margin:10px 0}
+  .warn{background:var(--warn-bg);border:1px solid #fcd34d;border-radius:8px;padding:10px 12px;font-size:13px;margin:10px 0;color:#78350f}
+  .err{background:var(--bad-bg);border:1px solid #fca5a5;border-radius:8px;padding:10px 12px;font-size:13px;margin:10px 0;color:#7f1d1d}
+  .okbox{background:var(--ok-bg);border:1px solid #86efac;border-radius:8px;padding:10px 12px;font-size:13px;margin:10px 0;color:#14532d}
+  label{display:block;font-size:13px;font-weight:600;margin:10px 0 4px}
+  input[type=text],input[type=url],input[type=number],input[type=date],select,textarea{width:100%;padding:10px;border:1px solid #d1d5db;border-radius:8px;font-size:15px;background:#fff;color:var(--ink)}
+  .row{display:flex;gap:8px;flex-wrap:wrap}
+  .row>*{flex:1 1 140px}
+  button.btn{background:var(--teal);color:#fff;border:0;border-radius:8px;padding:11px 16px;font-size:15px;font-weight:600;cursor:pointer;margin-top:10px}
+  button.btn:disabled{opacity:.55;cursor:wait}
+  button.btn.secondary{background:#fff;color:var(--teal);border:1px solid var(--teal)}
+  button.btn.danger{background:#fff;color:var(--bad);border:1px solid var(--bad)}
+  button.btn.small{padding:6px 10px;font-size:13px;margin-top:0}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:10px 0}
+  .stat{background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:12px;text-align:center}
+  .stat b{display:block;font-size:24px;color:var(--teal-dark)}
+  .stat span{font-size:12px;color:var(--muted)}
+  table{width:100%;border-collapse:collapse;font-size:14px;margin-top:8px}
+  th,td{text-align:left;padding:7px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-size:12px;text-transform:uppercase;color:var(--muted)}
+  td{word-break:break-word}
+  .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600}
+  .pill.ok{background:var(--ok-bg);color:var(--ok)}
+  .pill.bad{background:var(--bad-bg);color:var(--bad)}
+  .pill.warn{background:var(--warn-bg);color:var(--warn)}
+  .pill.info{background:#e0f2fe;color:#075985}
+  .bar-row{display:flex;align-items:center;gap:8px;margin:6px 0;font-size:13px}
+  .bar-row .lbl{flex:0 0 90px}
+  .bar-row .bar{flex:1;height:16px;background:#e5e7eb;border-radius:999px;overflow:hidden}
+  .bar-row .bar i{display:block;height:100%;background:var(--teal)}
+  .bar-row .val{flex:0 0 70px;text-align:right;font-weight:600}
+  .prog{font-size:13px;color:var(--muted);margin:8px 0}
+  .listing{border:1px solid var(--line);border-radius:8px;padding:12px;margin:8px 0}
+  .listing b{font-size:15px}
+  .listing .price{color:var(--teal-dark);font-weight:700}
+  footer{max-width:920px;margin:0 auto;padding:0 12px 32px;color:var(--muted);font-size:12px}
+  .score{font-size:34px;font-weight:800;color:var(--teal-dark)}
+  details{font-size:13px;margin-top:8px}
+  details summary{cursor:pointer;font-weight:600}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>SEO<span>Forge</span> <span style="font-size:12px;color:#94a3b8;font-weight:400">v1</span></h1>
+    <p>SEO audit, keywords, rank tracking, link checks, ad revenue &amp; link sales — one dashboard by Syeds Enterprises. Free sources only. No invented numbers.</p>
+  </div>
+</header>
+<nav><div class="tabs" id="tabs">
+  <button data-tab="dashboard" class="active">Dashboard</button>
+  <button data-tab="audit">Site Audit</button>
+  <button data-tab="keywords">Keyword Explorer</button>
+  <button data-tab="rank">Rank Tracker</button>
+  <button data-tab="links">Link Verifier</button>
+  <button data-tab="ads">Ad Revenue</button>
+  <button data-tab="market">Marketplace</button>
+</div></nav>
+<main>
+
+<!-- ============ DASHBOARD ============ -->
+<section class="tab active" id="tab-dashboard">
+  <div class="card">
+    <h2>Dashboard</h2>
+    <p class="muted">Totals are computed from what is saved in this browser only (localStorage). Nothing leaves your device.</p>
+    <div class="grid">
+      <div class="stat"><b id="stAudits">0</b><span>site audits run</span></div>
+      <div class="stat"><b id="stKeywords">0</b><span>keywords tracked</span></div>
+      <div class="stat"><b id="stLinks">0</b><span>links verified</span></div>
+      <div class="stat"><b id="stRevenue">$0.00</b><span>ad revenue logged</span></div>
+      <div class="stat"><b id="stOrders">0</b><span>marketplace orders</span></div>
+    </div>
+    <div class="row">
+      <button class="btn secondary" data-goto="audit">Run a site audit</button>
+      <button class="btn secondary" data-goto="keywords">Find keywords</button>
+      <button class="btn secondary" data-goto="links">Verify a paid link</button>
+      <button class="btn secondary" data-goto="ads">Log ad revenue</button>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Your sites</h2>
+    <table>
+      <tr><th>Site</th><th>What it is</th><th>Open</th></tr>
+      <tr><td><b>LookForIt</b></td><td>AI tools directory — 153 verified tools. Sponsored listing $20 one-time, manual review $49.</td><td><a href="https://www.lookforit.xyz" target="_blank" rel="noopener">lookforit.xyz</a></td></tr>
+      <tr><td><b>Estate Path</b></td><td>Florida real estate blog (Blogger). Guest posts: DM for rates — no fixed price.</td><td><a href="https://www.estatepath.online" target="_blank" rel="noopener">estatepath.online</a></td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h2>Data sources &amp; honest limits</h2>
+    <ul class="muted" style="margin:6px 0;padding-left:20px">
+      <li><b>Site Audit:</b> your sitemap fetched through a free public proxy; PageSpeed Insights (Google, free, no key). Google's no-key quota is shared and often exhausted — if it returns 429, add a free API key in Ad Revenue → Settings, or retry later.</li>
+      <li><b>Keyword Explorer:</b> live suggestions from Google Suggest. Search volume is <b>not</b> available without a paid keyword API — it is never invented here.</li>
+      <li><b>Rank Tracker:</b> checks DuckDuckGo results, <b>not Google</b>. Position is honest for that source only.</li>
+      <li><b>Link Verifier:</b> reads the live linking page and reports the real <code>rel</code> attribute (dofollow / nofollow / sponsored / ugc).</li>
+      <li><b>Ad Revenue:</b> manual logging only in v1. Live sync needs your network API keys (v2).</li>
+      <li><b>Backlink index:</b> there is <b>no free Ahrefs/Semrush backlink index</b>. SEOForge does not fake one — verify links directly with the Link Verifier.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============ SITE AUDIT ============ -->
+<section class="tab" id="tab-audit">
+  <div class="card">
+    <h2>Site Audit</h2>
+    <p class="muted">Screaming Frog-style crawl of a sitemap, plus Google PageSpeed Insights. Enter a site URL (or a sitemap.xml URL directly).</p>
+    <label for="auditUrl">Site or sitemap URL</label>
+    <input type="url" id="auditUrl" placeholder="https://www.lookforit.xyz" value="https://www.lookforit.xyz">
+    <div class="row">
+      <button class="btn" id="auditBtn">Run audit</button>
+      <button class="btn secondary" id="psiBtn">PageSpeed only</button>
+    </div>
+    <div class="row">
+      <div>
+        <label for="psiStrategy">PageSpeed strategy</label>
+        <select id="psiStrategy"><option value="mobile" selected>Mobile</option><option value="desktop">Desktop</option></select>
+      </div>
+      <div>
+        <label for="auditLimit">URLs to check (max 50)</label>
+        <input type="number" id="auditLimit" value="50" min="5" max="50">
+      </div>
+    </div>
+    <div class="prog" id="auditProg"></div>
+    <div id="auditOut"></div>
+  </div>
+  <div class="card">
+    <h2>Past audits</h2>
+    <div id="auditHistory"></div>
+  </div>
+</section>
+
+<!-- ============ KEYWORD EXPLORER ============ -->
+<section class="tab" id="tab-keywords">
+  <div class="card">
+    <h2>Keyword Explorer</h2>
+    <p class="muted">Live suggestions from Google Suggest for your seed keyword, plus question/buyer expansions and a–z. Suggestions are real; search volume is not shown because no free keyword API provides it — it is never invented.</p>
+    <label for="seedKw">Seed keyword</label>
+    <input type="text" id="seedKw" placeholder="e.g. ai tools for real estate" value="ai tools">
+    <button class="btn" id="kwBtn">Find suggestions</button>
+    <div class="prog" id="kwProg"></div>
+    <div id="kwOut"></div>
+  </div>
+</section>
+
+<!-- ============ RANK TRACKER ============ -->
+<section class="tab" id="tab-rank">
+  <div class="card">
+    <h2>Rank Tracker</h2>
+    <p class="muted">Checks where your page appears in <b>DuckDuckGo</b> results for a keyword — labelled clearly, because this is <b>not Google</b>. Positions are stored in this browser with the check date.</p>
+    <div class="row">
+      <div>
+        <label for="rkKw">Keyword</label>
+        <input type="text" id="rkKw" placeholder="e.g. ai tools directory">
+      </div>
+      <div>
+        <label for="rkUrl">Target URL (your page)</label>
+        <input type="url" id="rkUrl" placeholder="https://www.lookforit.xyz">
+      </div>
+    </div>
+    <button class="btn" id="rkAddBtn">Add to tracker</button>
+    <div id="rkList"></div>
+  </div>
+</section>
+
+<!-- ============ LINK VERIFIER ============ -->
+<section class="tab" id="tab-links">
+  <div class="card">
+    <h2>Link Verifier</h2>
+    <p class="muted">Reads the live linking page and reports every link pointing at your domain, with its real <code>rel</code> attribute. Use it to check paid listings before you call them done.</p>
+    <label for="lvPage">Linking page URL (the page that should link to you)</label>
+    <input type="url" id="lvPage" placeholder="https://example.com/article">
+    <label for="lvDomain">Your domain</label>
+    <input type="text" id="lvDomain" placeholder="lookforit.xyz" value="lookforit.xyz">
+    <button class="btn" id="lvBtn">Verify links</button>
+    <div class="prog" id="lvProg"></div>
+    <div id="lvOut"></div>
+  </div>
+  <div class="card">
+    <h2>Verified links (saved)</h2>
+    <div id="lvHistory"></div>
+  </div>
+</section>
+
+<!-- ============ AD REVENUE ============ -->
+<section class="tab" id="tab-ads">
+  <div class="card">
+    <h2>Ad Revenue Hub</h2>
+    <p class="muted">Log daily revenue by hand. Totals are computed from your entries only — nothing here is a live network figure until API sync arrives in v2.</p>
+    <div class="row">
+      <div>
+        <label for="revDate">Date</label>
+        <input type="date" id="revDate">
+      </div>
+      <div>
+        <label for="revNet">Network</label>
+        <select id="revNet"><option>Adsterra</option><option>Monetag</option><option>AdSense</option><option>Other</option></select>
+      </div>
+      <div>
+        <label for="revAmt">Amount (USD)</label>
+        <input type="number" id="revAmt" placeholder="0.00" min="0" step="0.01">
+      </div>
+    </div>
+    <button class="btn" id="revAddBtn">Log revenue</button>
+    <div id="revTotals"></div>
+    <div id="revChart"></div>
+    <h3>Entries</h3>
+    <div id="revList"></div>
+  </div>
+  <div class="card">
+    <h2>Settings — API keys (optional, v2)</h2>
+    <p class="muted">Keys are stored <b>only in this browser's localStorage</b> and are never sent anywhere except to the service they belong to, when you run a check. Leave blank to keep using free no-key endpoints.</p>
+    <label for="setPsi">Google PageSpeed Insights API key (free from Google Cloud Console — raises the daily quota)</label>
+    <input type="text" id="setPsi" placeholder="Leave blank for no-key mode">
+    <label for="setAdsterra">Adsterra API key (v2 live sync — not used yet)</label>
+    <input type="text" id="setAdsterra" placeholder="Leave blank">
+    <label for="setMonetag">Monetag API key (v2 live sync — not used yet)</label>
+    <input type="text" id="setMonetag" placeholder="Leave blank">
+    <label for="setAdsense">AdSense API key (v2 live sync — not used yet)</label>
+    <input type="text" id="setAdsense" placeholder="Leave blank">
+    <button class="btn" id="setSaveBtn">Save settings</button>
+    <span class="muted" id="setSaved"></span>
+    <div class="note">Live sync needs your network API keys — add them here when v2 arrives. Until then, revenue is manual logging only.</div>
+  </div>
+</section>
+
+<!-- ============ MARKETPLACE ============ -->
+<section class="tab" id="tab-market">
+  <div class="card">
+    <h2>Link Marketplace</h2>
+    <p class="muted">Your real inventory only. Orders are local records — you complete the sale yourself with the buyer. No fake listings, no fake buyers, no fake sales.</p>
+    <div id="mktList"></div>
+    <h3>Add a listing</h3>
+    <div class="row">
+      <div>
+        <label for="mkSite">Site URL</label>
+        <input type="url" id="mkSite" placeholder="https://example.com">
+      </div>
+      <div>
+        <label for="mkNiche">Niche</label>
+        <input type="text" id="mkNiche" placeholder="e.g. AI tools">
+      </div>
+      <div>
+        <label for="mkPrice">Price (USD, one-time)</label>
+        <input type="number" id="mkPrice" placeholder="20" min="0" step="1">
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label for="mkDa">DA (optional — leave blank if unknown)</label>
+        <input type="number" id="mkDa" placeholder="" min="0" max="100">
+      </div>
+      <div>
+        <label for="mkDr">DR (optional — leave blank if unknown)</label>
+        <input type="number" id="mkDr" placeholder="" min="0" max="100">
+      </div>
+    </div>
+    <button class="btn" id="mkAddBtn">Add listing</button>
+    <h3>Orders</h3>
+    <div id="mktOrders"></div>
+  </div>
+</section>
+
+</main>
+<footer>
+  SEOForge v1 — by Syeds Enterprises. All data stays in this browser (localStorage). Free data sources only: Google PageSpeed Insights, Google Suggest, DuckDuckGo HTML results, public CORS proxies. No backlink index is faked; no search volume is invented.
+</footer>
+
+<script>
+"use strict";
+/* ---------- storage ---------- */
+const LS = {
+  get(k, d){ try{ const v = localStorage.getItem("syedSuite."+k); return v ? JSON.parse(v) : d; }catch(e){ return d; } },
+  set(k, v){ localStorage.setItem("syedSuite."+k, JSON.stringify(v)); }
+};
+const $ = id => document.getElementById(id);
+const esc = s => String(s==null?"":s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const todayISO = () => new Date().toISOString().slice(0,10);
+const fmtDate = iso => { try{ return new Date(iso+"T00:00:00").toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"}); }catch(e){ return iso; } };
+const normHost = h => String(h||"").toLowerCase().replace(/^www\./,"").replace(/\/$/,"");
+
+/* ---------- tabs ---------- */
+document.querySelectorAll("#tabs button").forEach(b => b.addEventListener("click", () => showTab(b.dataset.tab)));
+document.querySelectorAll("[data-goto]").forEach(b => b.addEventListener("click", () => showTab(b.dataset.goto)));
+function showTab(name){
+  document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("active", b.dataset.tab===name));
+  document.querySelectorAll("section.tab").forEach(s => s.classList.toggle("active", s.id==="tab-"+name));
+  if(name==="dashboard") renderDashboard();
+  if(name==="audit") renderAuditHistory();
+  if(name==="rank") renderRankList();
+  if(name==="links") renderLinkHistory();
+  if(name==="ads"){ renderRevenue(); loadSettings(); }
+  if(name==="market") renderMarket();
+  window.scrollTo({top:0});
+}
+
+/* ---------- fetch helpers (honest errors, proxy fallback) ---------- */
+function fetchTimeout(url, ms){
+  const c = new AbortController();
+  const t = setTimeout(() => c.abort(), ms);
+  return fetch(url, {signal:c.signal}).finally(() => clearTimeout(t));
+}
+const PROXIES = [
+  u => "https://api.allorigins.win/raw?url=" + encodeURIComponent(u),
+  u => "https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent(u)
+];
+function isProxyErrorPage(status, text){
+  if(status===522 || status===408) return true;
+  if(status===500 && /internal server error|error code/i.test((text||"").slice(0,400))) return true;
+  return false;
+}
+/* Fetch any URL through free public proxies. Returns {status, text}.
+   Status codes from the proxy usually mirror the target; 500/522/408 are proxy failures, not proof the site is down. */
+async function fetchViaProxy(url, timeoutMs){
+  let lastErr = null;
+  for(const p of PROXIES){
+    try{
+      const res = await fetchTimeout(p(url), timeoutMs||15000);
+      const text = await res.text();
+      if(isProxyErrorPage(res.status, text)){ lastErr = new Error("Proxy error (HTTP "+res.status+" from the free proxy — the target site may still be fine)"); continue; }
+      return { status: res.status, ok: res.ok, text };
+    }catch(e){ lastErr = e; }
+  }
+  throw lastErr || new Error("All free proxies failed — retry later");
+}
+
+/* ---------- Dashboard ---------- */
+function renderDashboard(){
+  $("stAudits").textContent = LS.get("audits", []).length;
+  $("stKeywords").textContent = LS.get("keywords", []).length;
+  $("stLinks").textContent = LS.get("links", []).length;
+  const rev = LS.get("revenue", []);
+  $("stRevenue").textContent = "$" + rev.reduce((a,r)=>a+(+r.amount||0),0).toFixed(2);
+  $("stOrders").textContent = LS.get("orders", []).length;
+}
+
+/* ---------- Site Audit ---------- */
+function normaliseSite(input){
+  let u = (input||"").trim();
+  if(!u) return "";
+  if(!/^https?:\/\//i.test(u)) u = "https://" + u;
+  return u.replace(/\/+$/,"");
+}
+async function runAudit(psiOnly){
+  const btn = $("auditBtn"), psiBtn = $("psiBtn");
+  btn.disabled = true; psiBtn.disabled = true;
+  const out = $("auditOut"), prog = $("auditProg");
+  out.innerHTML = ""; prog.textContent = "";
+  const site = normaliseSite($("auditUrl").value);
+  if(!site){ out.innerHTML = '<div class="err">Enter a site URL first.</div>'; btn.disabled=false; psiBtn.disabled=false; return; }
+  const strategy = $("psiStrategy").value;
+  const limit = Math.max(5, Math.min(50, parseInt($("auditLimit").value||"50",10)));
+  const started = Date.now();
+  try{
+    let urls = [], sitemapNote = "";
+    if(!psiOnly){
+      const sitemapUrl = /\.xml(\?|$)/i.test(site) ? site : site + "/sitemap.xml";
+      prog.textContent = "Fetching sitemap: " + sitemapUrl + " …";
+      const sm = await fetchViaProxy(sitemapUrl, 20000);
+      if(sm.status === 404){ throw new Error("Sitemap not found at " + sitemapUrl + " (HTTP 404). Check the URL — some sites use a different sitemap path."); }
+      if(!sm.ok){ throw new Error("Sitemap fetch failed (HTTP " + sm.status + "). The free proxy may be having trouble — retry, or paste the sitemap URL directly."); }
+      const doc = new DOMParser().parseFromString(sm.text, "application/xml");
+      urls = [...doc.querySelectorAll("url > loc")].map(n => n.textContent.trim()).filter(Boolean);
+      if(!urls.length){
+        const idx = [...doc.querySelectorAll("sitemap > loc")].map(n => n.textContent.trim()).filter(Boolean);
+        if(idx.length){
+          sitemapNote = "This is a sitemap index with " + idx.length + " child sitemaps. Checking the first one: " + esc(idx[0]);
+          prog.textContent = "Sitemap index found — fetching first child sitemap …";
+          const child = await fetchViaProxy(idx[0], 20000);
+          const cdoc = new DOMParser().parseFromString(child.text, "application/xml");
+          urls = [...cdoc.querySelectorAll("url > loc")].map(n => n.textContent.trim()).filter(Boolean);
+        }
+      }
+      if(!urls.length){ throw new Error("No URLs found in the sitemap. It may be empty, or in a format this parser does not read."); }
+      urls = urls.slice(0, limit);
+      prog.textContent = "Sitemap OK — " + urls.length + " URLs found. Checking each one (in batches) …";
+      // status-check in batches of 5
+      const results = new Array(urls.length);
+      const BATCH = 5;
+      for(let i=0;i<urls.length;i+=BATCH){
+        const slice = urls.slice(i, i+BATCH);
+        await Promise.all(slice.map(async (u, j) => {
+          try{
+            const r = await fetchViaProxy(u, 12000);
+            results[i+j] = { url:u, status:r.status, ok:r.ok };
+          }catch(e){ results[i+j] = { url:u, status:null, ok:false, err:String(e.message||e) }; }
+        }));
+        prog.textContent = "Checked " + Math.min(i+BATCH, urls.length) + " of " + urls.length + " URLs …";
+      }
+      const okN = results.filter(r=>r.ok).length;
+      const failN = results.length - okN;
+      let rows = results.map(r => {
+        const pill = r.ok ? '<span class="pill ok">OK ' + r.status + '</span>'
+          : (r.status ? '<span class="pill bad">HTTP ' + r.status + '</span>' : '<span class="pill warn">Proxy error</span>');
+        return "<tr><td>" + esc(r.url) + "</td><td>" + pill + "</td><td class='muted'>" + (r.ok ? "" : esc(r.err||"")) + "</td></tr>";
+      }).join("");
+      out.innerHTML += '<div class="card" style="margin-top:10px"><h3>Sitemap crawl — ' + urls.length + ' URLs</h3>'
+        + (sitemapNote ? '<p class="muted">'+sitemapNote+'</p>' : '')
+        + '<p><span class="pill ok">' + okN + ' reachable</span> <span class="pill bad">' + failN + ' failed / proxy errors</span></p>'
+        + '<p class="muted">“Proxy error” means the free proxy could not fetch that URL — it does not prove the page is down. Retry if you see many of them.</p>'
+        + '<div style="overflow-x:auto"><table><tr><th>URL</th><th>Status</th><th>Note</th></tr>' + rows + '</table></div></div>';
+      LS.set("audits", [{date:todayISO(), url:site, total:urls.length, ok:okN, failed:failN, psi:null}].concat(LS.get("audits", [])).slice(0,20));
+    }
+    // PageSpeed
+    prog.textContent = "Running PageSpeed Insights (" + strategy + ") — this can take up to a minute …";
+    const psi = await runPSI(site, strategy);
+    out.innerHTML += psiHtml(psi, site, strategy);
+    prog.textContent = "Done in " + Math.round((Date.now()-started)/1000) + "s.";
+    const audits = LS.get("audits", []);
+    if(audits.length && audits[0].url===site && audits[0].date===todayISO()){ audits[0].psi = psi.score; LS.set("audits", audits); }
+  }catch(e){
+    out.innerHTML += '<div class="err"><b>Check failed:</b> ' + esc(e.message||e) + '</div>';
+    prog.textContent = "";
+  }finally{
+    btn.disabled = false; psiBtn.disabled = false;
+    renderAuditHistory();
+  }
+}
+async function runPSI(url, strategy){
+  const key = (LS.get("settings", {}).psiKey||"").trim();
+  let api = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=" + encodeURIComponent(url) + "&strategy=" + strategy;
+  if(key) api += "&key=" + encodeURIComponent(key);
+  let res;
+  try{ res = await fetchTimeout(api, 120000); }
+  catch(e){ throw new Error("PageSpeed request timed out after 120s. Google's service may be slow — retry."); }
+  let data = {};
+  try{ data = await res.json(); }catch(e){ throw new Error("PageSpeed returned an unreadable response (HTTP " + res.status + ")."); }
+  if(!res.ok){
+    const msg = (data.error && data.error.message) || ("HTTP " + res.status);
+    if(res.status===429) throw new Error("PageSpeed Insights quota exhausted (HTTP 429): " + msg + " The free no-key quota is shared and often runs out. Add a free API key in Ad Revenue → Settings, or retry later.");
+    throw new Error("PageSpeed Insights failed: " + msg);
+  }
+  const lr = data.lighthouseResult;
+  if(!lr) throw new Error("PageSpeed returned no Lighthouse result for this URL.");
+  const perf = lr.categories && lr.categories.performance ? lr.categories.performance.score : null;
+  const audits = lr.audits || {};
+  const lcp = audits["largest-contentful-paint"];
+  const cls = audits["cumulative-layout-shift"];
+  const seoRefs = (lr.categories && lr.categories.seo && lr.categories.seo.auditRefs) || [];
+  const seoItems = seoRefs.map(r => {
+    const a = audits[r.id]; if(!a) return null;
+    return { title:a.title, score:a.score, display:a.displayValue||"" };
+  }).filter(Boolean);
+  return { score: perf==null?null:Math.round(perf*100), lcp:lcp?lcp.displayValue||"":null, cls:cls?cls.displayValue||"":null, seo:seoItems, finalUrl:lr.finalUrl||url };
+}
+function psiHtml(psi, site, strategy){
+  let seoRows = psi.seo.map(s => {
+    const pill = s.score===1 ? '<span class="pill ok">Pass</span>' : (s.score===0 ? '<span class="pill bad">Fail</span>' : '<span class="pill info">Info</span>');
+    return "<tr><td>" + esc(s.title) + "</td><td>" + pill + "</td><td class='muted'>" + esc(s.display) + "</td></tr>";
+  }).join("");
+  return '<div class="card" style="margin-top:10px"><h3>PageSpeed Insights — ' + esc(strategy) + '</h3>'
+    + '<p><span class="score">' + (psi.score==null?"—":psi.score) + '</span> <span class="muted">/ 100 performance</span></p>'
+    + '<p>LCP: <b>' + esc(psi.lcp||"not reported") + '</b> &nbsp;·&nbsp; CLS: <b>' + esc(psi.cls||"not reported") + '</b> &nbsp;·&nbsp; Final URL: <span class="muted">' + esc(psi.finalUrl||site) + '</span></p>'
+    + '<h3>SEO checks returned by PageSpeed</h3>'
+    + (seoRows ? '<div style="overflow-x:auto"><table><tr><th>Check</th><th>Result</th><th>Detail</th></tr>' + seoRows + '</table></div>' : '<p class="muted">No SEO audit items returned.</p>')
+    + '</div>';
+}
+function renderAuditHistory(){
+  const list = LS.get("audits", []);
+  $("auditHistory").innerHTML = list.length ? list.map(a =>
+    '<div class="listing"><b>' + esc(a.url) + '</b> <span class="muted">— ' + fmtDate(a.date) + '</span><br>'
+    + '<span class="pill ok">' + a.ok + ' OK</span> <span class="pill bad">' + a.failed + ' failed</span>'
+    + (a.psi!=null ? ' <span class="pill info">PageSpeed ' + a.psi + '/100</span>' : '')
+    + '</div>').join("") : '<p class="muted">No audits yet. Run one above.</p>';
+}
+$("auditBtn").addEventListener("click", () => runAudit(false));
+$("psiBtn").addEventListener("click", () => runAudit(true));
+
+/* ---------- Keyword Explorer ---------- */
+const KW_PREFIXES = ["how ","what ","best ","buy "," price"," near me"];
+async function suggestOne(q){
+  const api = "https://suggestqueries.google.com/complete/search?client=firefox&q=" + encodeURIComponent(q);
+  try{
+    const r = await fetchTimeout(api, 8000);
+    if(r.ok){ const j = await r.json(); return j[1]||[]; }
+  }catch(e){ /* CORS or network — fall through to proxy */ }
+  const { text } = await fetchViaProxy(api, 12000);
+  const j = JSON.parse(text);
+  return j[1]||[];
+}
+async function runKeywords(){
+  const btn = $("kwBtn"); btn.disabled = true;
+  const out = $("kwOut"), prog = $("kwProg");
+  out.innerHTML = ""; prog.textContent = "";
+  const seed = ($("seedKw").value||"").trim();
+  if(!seed){ out.innerHTML = '<div class="err">Enter a seed keyword first.</div>'; btn.disabled=false; return; }
+  const queries = [seed]
+    .concat(KW_PREFIXES.map(p => p.endsWith(" ") ? p + seed : seed + p))
+    .concat("abcdefghijklmnopqrstuvwxyz".split("").map(ch => seed + " " + ch));
+  const found = new Map();
+  let done = 0, failed = 0;
+  const POOL = 4;
+  for(let i=0;i<queries.length;i+=POOL){
+    await Promise.all(queries.slice(i, i+POOL).map(async q => {
+      try{
+        const list = await suggestOne(q);
+        list.forEach(s => { const k = String(s).trim().toLowerCase(); if(k && !found.has(k)) found.set(k, String(s).trim()); });
+      }catch(e){ failed++; }
+      done++;
+      prog.textContent = "Checked " + done + " of " + queries.length + " expansions — " + found.size + " suggestions so far …";
+    }));
+  }
+  const items = [...found.values()].sort((a,b)=>a.localeCompare(b));
+  prog.textContent = items.length + " unique suggestions from Google Suggest" + (failed ? " (" + failed + " expansions failed — free proxy trouble, not missing keywords)." : ".");
+  if(!items.length){
+    out.innerHTML = '<div class="err">No suggestions returned. Google Suggest or the free proxy may be unreachable right now — retry in a minute.</div>';
+  }else{
+    out.innerHTML = '<div class="note">Suggestions from Google — search volume is not available without a keyword API (not invented). Save any suggestion to the Rank Tracker to watch it.</div>'
+      + '<table><tr><th>Suggestion</th><th></th></tr>' + items.map(s =>
+        '<tr><td>' + esc(s) + '</td><td><button class="btn small secondary" data-save-kw="' + esc(s) + '">Save to tracker</button></td></tr>').join("") + '</table>';
+    out.querySelectorAll("[data-save-kw]").forEach(b => b.addEventListener("click", () => {
+      saveKeyword(b.dataset.saveKw, "");
+      b.textContent = "Saved ✓"; b.disabled = true;
+    }));
+  }
+  btn.disabled = false;
+}
+$("kwBtn").addEventListener("click", runKeywords);
+
+/* ---------- Rank Tracker ---------- */
+function saveKeyword(keyword, url){
+  const list = LS.get("keywords", []);
+  if(list.some(k => k.keyword.toLowerCase()===keyword.toLowerCase())) return false;
+  list.push({ keyword, url:url||"", checks:[] });
+  LS.set("keywords", list);
+  return true;
+}
+$("rkAddBtn").addEventListener("click", () => {
+  const kw = ($("rkKw").value||"").trim(), url = ($("rkUrl").value||"").trim();
+  if(!kw){ alert("Enter a keyword first."); return; }
+  if(!saveKeyword(kw, url)){ alert("That keyword is already tracked."); return; }
+  $("rkKw").value = ""; $("rkUrl").value = "";
+  renderRankList(); renderDashboard();
+});
+function renderRankList(){
+  const list = LS.get("keywords", []);
+  if(!list.length){ $("rkList").innerHTML = '<p class="muted">No keywords tracked yet. Add one above, or save suggestions from the Keyword Explorer.</p>'; return; }
+  $("rkList").innerHTML = list.map((k, i) => {
+    const last = k.checks.length ? k.checks[k.checks.length-1] : null;
+    const hist = k.checks.slice(-5).reverse().map(c =>
+      '<li>' + fmtDate(c.date) + ': ' + (c.position ? 'position ' + c.position : 'not in top results') + ' (DuckDuckGo)</li>').join("");
+    return '<div class="listing"><b>' + esc(k.keyword) + '</b> <span class="muted">→ ' + esc(k.url||"(no target URL set)") + '</span><br>'
+      + (last ? '<span class="pill ' + (last.position ? 'ok' : 'warn') + '">Last: ' + (last.position ? '#' + last.position : 'not found') + ' · ' + fmtDate(last.date) + '</span>' : '<span class="pill info">Never checked</span>')
+      + ' <button class="btn small" data-check="' + i + '">Check now</button>'
+      + ' <button class="btn small danger" data-del-kw="' + i + '">Remove</button>'
+      + (hist ? '<ul class="muted">' + hist + '</ul>' : '') + '</div>';
+  }).join("");
+  $("rkList").querySelectorAll("[data-check]").forEach(b => b.addEventListener("click", () => checkRank(+b.dataset.check, b)));
+  $("rkList").querySelectorAll("[data-del-kw]").forEach(b => b.addEventListener("click", () => {
+    const list2 = LS.get("keywords", []); list2.splice(+b.dataset.delKw, 1); LS.set("keywords", list2); renderRankList(); renderDashboard();
+  }));
+}
+async function checkRank(idx, btn){
+  const list = LS.get("keywords", []);
+  const item = list[idx]; if(!item) return;
+  if(!item.url){ alert("Set a target URL for this keyword first (edit it by removing and re-adding)."); return; }
+  btn.disabled = true; btn.textContent = "Checking…";
+  try{
+    const target = normHost(new URL(item.url.startsWith("http")?item.url:"https://"+item.url).hostname);
+    const ddg = "https://html.duckduckgo.com/html/?q=" + encodeURIComponent(item.keyword);
+    const { text } = await fetchViaProxy(ddg, 20000);
+    const doc = new DOMParser().parseFromString(text, "text/html");
+    const links = [...doc.querySelectorAll("a.result__a")].map(a => a.getAttribute("href")||"");
+    let position = null;
+    for(let i=0;i<links.length;i++){
+      let href = links[i];
+      try{
+        const m = href.match(/[?&]uddg=([^&]+)/);
+        if(m) href = decodeURIComponent(m[1]);
+        const host = normHost(new URL(href, "https://duckduckgo.com").hostname);
+        if(host === target || host.endsWith("." + target)){ position = i+1; break; }
+      }catch(e){ /* skip bad href */ }
+    }
+    item.checks.push({ date: todayISO(), position });
+    LS.set("keywords", list);
+    renderRankList(); renderDashboard();
+  }catch(e){
+    alert("Rank check failed: " + (e.message||e) + "\nThe free proxy or DuckDuckGo may be unreachable — retry later.");
+    btn.disabled = false; btn.textContent = "Check now";
+  }
+}
+
+/* ---------- Link Verifier ---------- */
+function classifyRel(rel){
+  const r = (rel||"").toLowerCase();
+  if(r.includes("sponsored")) return { label:"Sponsored", cls:"warn" };
+  if(r.includes("nofollow")) return { label:"Nofollow", cls:"bad" };
+  if(r.includes("ugc")) return { label:"UGC", cls:"warn" };
+  return { label:"Dofollow", cls:"ok" };
+}
+async function runLinkVerify(){
+  const btn = $("lvBtn"); btn.disabled = true;
+  const out = $("lvOut"), prog = $("lvProg");
+  out.innerHTML = ""; prog.textContent = "";
+  const page = normaliseSite($("lvPage").value);
+  const domain = normHost($("lvDomain").value);
+  if(!page || !domain){ out.innerHTML = '<div class="err">Enter both the linking page URL and your domain.</div>'; btn.disabled=false; return; }
+  prog.textContent = "Fetching " + page + " …";
+  try{
+    const { text, status } = await fetchViaProxy(page, 20000);
+    if(!status || status===404){ throw new Error("Page fetch failed (HTTP " + (status||"proxy error") + "). Check the URL and retry."); }
+    const doc = new DOMParser().parseFromString(text, "text/html");
+    const anchors = [...doc.querySelectorAll("a[href]")];
+    const hits = [];
+    anchors.forEach(a => {
+      const href = a.getAttribute("href")||"";
+      let host = "";
+      try{ host = normHost(new URL(href, page).hostname); }catch(e){ return; }
+      if(host === domain || host.endsWith("." + domain)){
+        hits.push({ anchor:(a.textContent||"").trim().slice(0,120) || "(no anchor text)", href: href, rel:(a.getAttribute("rel")||"").toLowerCase() });
+      }
+    });
+    prog.textContent = "";
+    if(!hits.length){
+      out.innerHTML = '<div class="warn"><b>No link found.</b> The page ' + esc(page) + ' contains no link to ' + esc(domain) + ' (checked ' + anchors.length + ' links on the page). The link may not exist, or the page may load links with JavaScript, which this checker cannot see.</div>';
+    }else{
+      const rows = hits.map(h => {
+        const c = classifyRel(h.rel);
+        return "<tr><td>" + esc(h.anchor) + "</td><td>" + esc(h.href) + "</td><td><span class='pill " + c.cls + "'>" + c.label + "</span><br><span class='muted'>rel=\"" + esc(h.rel||"(none)") + "\"</span></td></tr>";
+      }).join("");
+      out.innerHTML = '<div class="okbox"><b>' + hits.length + ' link' + (hits.length>1?"s":"") + ' to ' + esc(domain) + ' found</b> on ' + esc(page) + '.</div>'
+        + '<div style="overflow-x:auto"><table><tr><th>Anchor text</th><th>Link</th><th>Type</th></tr>' + rows + '</table></div>'
+        + '<p class="muted">Paid/sponsored links should be rel="sponsored" (or nofollow). A paid link showing as Dofollow needs fixing.</p>';
+      const saved = LS.get("links", []);
+      saved.unshift({ date:todayISO(), page, domain, count:hits.length, types:hits.map(h=>classifyRel(h.rel).label).join(", ") });
+      LS.set("links", saved.slice(0,50));
+      renderLinkHistory(); renderDashboard();
+    }
+  }catch(e){
+    out.innerHTML = '<div class="err"><b>Verification failed:</b> ' + esc(e.message||e) + '</div>';
+    prog.textContent = "";
+  }finally{ btn.disabled = false; }
+}
+function renderLinkHistory(){
+  const list = LS.get("links", []);
+  $("lvHistory").innerHTML = list.length ? list.map(l =>
+    '<div class="listing"><b>' + esc(l.domain) + '</b> on <span class="muted">' + esc(l.page) + '</span><br>'
+    + '<span class="pill info">' + l.count + ' link(s): ' + esc(l.types) + '</span> <span class="muted">' + fmtDate(l.date) + '</span></div>').join("")
+    : '<p class="muted">No verified links saved yet.</p>';
+}
+$("lvBtn").addEventListener("click", runLinkVerify);
+
+/* ---------- Ad Revenue ---------- */
+$("revDate").value = todayISO();
+function renderRevenue(){
+  const entries = LS.get("revenue", []);
+  const nets = ["Adsterra","Monetag","AdSense","Other"];
+  const totals = {};
+  nets.forEach(n => totals[n] = 0);
+  entries.forEach(e => { totals[e.network] = (totals[e.network]||0) + (+e.amount||0); });
+  const overall = entries.reduce((a,e)=>a+(+e.amount||0),0);
+  const max = Math.max.apply(null, nets.map(n=>totals[n]).concat([0.01]));
+  $("revTotals").innerHTML = '<p><b>Total logged: $' + overall.toFixed(2) + '</b> across ' + entries.length + ' entries.</p>';
+  $("revChart").innerHTML = '<h3>By network</h3>' + nets.map(n =>
+    '<div class="bar-row"><span class="lbl">' + n + '</span><span class="bar"><i style="width:' + Math.round(totals[n]/max*100) + '%"></i></span><span class="val">$' + totals[n].toFixed(2) + '</span></div>').join("");
+  $("revList").innerHTML = entries.length ? '<table><tr><th>Date</th><th>Network</th><th>Amount</th><th></th></tr>' + entries.slice().reverse().map((e, ri) => {
+    const i = entries.length - 1 - ri;
+    return '<tr><td>' + fmtDate(e.date) + '</td><td>' + esc(e.network) + '</td><td>$' + (+e.amount).toFixed(2) + '</td><td><button class="btn small danger" data-del-rev="' + i + '">Delete</button></td></tr>';
+  }).join("") + '</table>' : '<p class="muted">No revenue logged yet.</p>';
+  $("revList").querySelectorAll("[data-del-rev]").forEach(b => b.addEventListener("click", () => {
+    const list = LS.get("revenue", []); list.splice(+b.dataset.delRev, 1); LS.set("revenue", list); renderRevenue(); renderDashboard();
+  }));
+}
+$("revAddBtn").addEventListener("click", () => {
+  const amt = parseFloat($("revAmt").value);
+  if(isNaN(amt) || amt < 0){ alert("Enter a valid amount (0 or more)."); return; }
+  const entries = LS.get("revenue", []);
+  entries.push({ date: $("revDate").value || todayISO(), network: $("revNet").value, amount: amt });
+  LS.set("revenue", entries);
+  $("revAmt").value = "";
+  renderRevenue(); renderDashboard();
+});
+function loadSettings(){
+  const s = LS.get("settings", {});
+  $("setPsi").value = s.psiKey||"";
+  $("setAdsterra").value = s.adsterraKey||"";
+  $("setMonetag").value = s.monetagKey||"";
+  $("setAdsense").value = s.adsenseKey||"";
+}
+$("setSaveBtn").addEventListener("click", () => {
+  LS.set("settings", { psiKey:$("setPsi").value.trim(), adsterraKey:$("setAdsterra").value.trim(), monetagKey:$("setMonetag").value.trim(), adsenseKey:$("setAdsense").value.trim() });
+  $("setSaved").textContent = "Saved in this browser.";
+  setTimeout(() => { $("setSaved").textContent = ""; }, 3000);
+});
+
+/* ---------- Marketplace ---------- */
+const SEED_LISTINGS = [
+  { id:"seed-1", site:"https://www.lookforit.xyz", niche:"AI tools directory", price:20, da:"", dr:"", title:"LookForIt — Sponsored listing", desc:"Your AI tool listed on lookforit.xyz (153 verified tools, 20 categories). One-time payment, live within 24 hours, marked sponsored." },
+  { id:"seed-2", site:"https://www.lookforit.xyz", niche:"AI tools directory", price:49, da:"", dr:"", title:"LookForIt — Manual review", desc:"Hands-on review of your AI tool, written up properly and listed on LookForIt. One-time $49." },
+  { id:"seed-3", site:"https://www.estatepath.online", niche:"Real estate (Florida, USA)", price:null, da:"", dr:"", title:"Estate Path — Guest post", desc:"Guest post on the Estate Path real estate blog. Price: DM for rates — no fixed price." }
+];
+function allListings(){ return SEED_LISTINGS.concat(LS.get("listings", [])); }
+function renderMarket(){
+  const listings = allListings();
+  $("mktList").innerHTML = listings.map(l =>
+    '<div class="listing"><b>' + esc(l.title) + '</b> — <span class="muted">' + esc(l.niche) + '</span><br>'
+    + '<span class="muted">' + esc(l.desc||"") + '</span><br>'
+    + '<a href="' + esc(l.site) + '" target="_blank" rel="noopener">' + esc(l.site) + '</a><br>'
+    + '<span class="price">' + (l.price==null ? 'DM for rates' : '$' + l.price + ' one-time') + '</span>'
+    + (l.da!=="" && l.da!=null ? ' · DA ' + esc(l.da) : '') + (l.dr!=="" && l.dr!=null ? ' · DR ' + esc(l.dr) : '')
+    + ' <button class="btn small" data-order="' + esc(l.id) + '">Order</button></div>').join("");
+  $("mktList").querySelectorAll("[data-order]").forEach(b => b.addEventListener("click", () => {
+    const l = allListings().find(x => x.id === b.dataset.order);
+    if(!l) return;
+    const orders = LS.get("orders", []);
+    orders.unshift({ date:todayISO(), listing:l.title, site:l.site, price:l.price, status:"pending" });
+    LS.set("orders", orders);
+    renderMarket(); renderDashboard();
+  }));
+  const orders = LS.get("orders", []);
+  $("mktOrders").innerHTML = orders.length ? orders.map((o,i) =>
+    '<div class="listing"><b>' + esc(o.listing) + '</b> <span class="muted">— ' + fmtDate(o.date) + '</span><br>'
+    + '<span class="pill warn">' + esc(o.status) + '</span> ' + (o.price==null ? 'DM for rates' : '$' + o.price)
+    + ' <button class="btn small secondary" data-complete-order="' + i + '">Mark completed</button>'
+    + ' <button class="btn small danger" data-del-order="' + i + '">Delete</button></div>').join("")
+    : '<p class="muted">No orders yet. Orders are local records only — contact the buyer yourself to complete the sale. No payments are taken here.</p>';
+  $("mktOrders").querySelectorAll("[data-complete-order]").forEach(b => b.addEventListener("click", () => {
+    const o = LS.get("orders", []); o[+b.dataset.completeOrder].status = "completed"; LS.set("orders", o); renderMarket();
+  }));
+  $("mktOrders").querySelectorAll("[data-del-order]").forEach(b => b.addEventListener("click", () => {
+    const o = LS.get("orders", []); o.splice(+b.dataset.delOrder, 1); LS.set("orders", o); renderMarket(); renderDashboard();
+  }));
+}
+$("mkAddBtn").addEventListener("click", () => {
+  const site = normaliseSite($("mkSite").value);
+  const priceRaw = $("mkPrice").value;
+  if(!site){ alert("Enter the site URL."); return; }
+  const price = priceRaw==="" ? null : parseFloat(priceRaw);
+  if(price!==null && (isNaN(price) || price<0)){ alert("Enter a valid price, or leave it blank for DM for rates."); return; }
+  const listings = LS.get("listings", []);
+  listings.push({ id:"custom-" + Date.now(), site, niche:($("mkNiche").value||"").trim()||"General", price, da:$("mkDa").value===""?"":$("mkDa").value, dr:$("mkDr").value===""?"":$("mkDr").value, title:site.replace(/^https?:\/\//,""), desc:"Custom listing added by you." });
+  LS.set("listings", listings);
+  ["mkSite","mkNiche","mkPrice","mkDa","mkDr"].forEach(id => { $(id).value = ""; });
+  renderMarket();
+});
+
+/* ---------- init ---------- */
+renderDashboard();
+renderAuditHistory();
+renderRankList();
+renderLinkHistory();
+renderRevenue();
+renderMarket();
+loadSettings();
+</script>
+</body>
+</html>
