@@ -38,3 +38,12 @@ test("Email endpoint cannot be used to send arbitrary mail",async()=>{
   const res=await handler(new Request("https://db.example/send-alert",{method:"POST",body:'{"to":"victim@example.com","html":"spam"}'}));
   assert.equal(res.status,401);
 });
+
+test("New Supabase secret keys do not inherit legacy bearer headers",async()=>{
+  let headers;
+  const ctx=vm.createContext({Deno:{env:{get:n=>({SUPABASE_URL:"https://db.example",SUPABASE_SECRET_KEYS:'{"default":"sb_secret_test"}',SUPABASE_SERVICE_ROLE_KEY:"legacy"})[n]}},AbortSignal,fetch:async(url,options)=>{headers=options.headers;return{ok:true,json:async()=>[]};}});
+  vm.runInContext(source("supabase/functions/_shared/http.js"),ctx);
+  await ctx.db("profiles");
+  assert.equal(headers.apikey,"sb_secret_test");
+  assert.equal(headers.Authorization,undefined);
+});

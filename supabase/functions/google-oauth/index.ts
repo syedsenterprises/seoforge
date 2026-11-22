@@ -29,8 +29,8 @@ serve(async req=>{
     if(typeof input.code!=="string"||input.code.length>4096|| !/^[A-Za-z0-9._~-]{43,128}$/.test(input.code_verifier||"")) throw new Error("Invalid OAuth exchange");
     const token=await tokenRequest({grant_type:"authorization_code",code:input.code,redirect_uri:input.redirect_uri,code_verifier:input.code_verifier});
     if(!token.access_token) throw new Error("Google returned no access token");
-    const previous=await db("google_tokens?user_id=eq."+user.id+"&provider=eq.google");
-    await db("google_tokens","POST",{user_id:user.id,provider:"google",access_token:token.access_token,refresh_token:token.refresh_token||previous[0]?.refresh_token||null,expires_at:new Date(Date.now()+token.expires_in*1000).toISOString()});
+    if(!token.refresh_token) throw new Error("Google did not grant offline access. Revoke the old grant in Google account settings and reconnect.");
+    await db("google_tokens","POST",{user_id:user.id,provider:"google",access_token:token.access_token,refresh_token:token.refresh_token,expires_at:new Date(Date.now()+token.expires_in*1000).toISOString()});
     return {connected:true};
   }
   const token=await accessToken(user.id);

@@ -21,8 +21,9 @@ export function serviceKey(){
   return env("SUPABASE_SERVICE_ROLE_KEY");
 }
 export async function db(path,method="GET",body){
+  const key=serviceKey();
   return request(env("SUPABASE_URL")+"/rest/v1/"+path,{
-    method,headers:{apikey:serviceKey(),...(Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")?{Authorization:"Bearer "+Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}:{}),"Content-Type":"application/json",Prefer:"return=representation,resolution=merge-duplicates"},
+    method,headers:{apikey:key,...(key.startsWith("sb_secret_")?{}:{Authorization:"Bearer "+key}),"Content-Type":"application/json",Prefer:"return=representation,resolution=merge-duplicates"},
     ...(body===undefined?{}:{body:JSON.stringify(body)})
   });
 }

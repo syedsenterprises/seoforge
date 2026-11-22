@@ -59,3 +59,5 @@ This is a hardening and customization release, **not a claim that all production
 ## v2.8 release completion
 
 Adds complete paginated account exports, authoritative usage counts, integration readiness, subscription refresh, per-account API rate limits, desktop/mobile browser smoke tests and six-hourly public endpoint monitoring. Apply database/release-usage.sql after the hardening upgrade on new installations. Both SQL upgrades are already applied to the hosted project. The status function reports configuration without disclosing secret values. Live paid activation still requires verified provider configuration.
+
+Browser validation passes on desktop (1440px) and mobile (390px). Production endpoint smoke tests reject unauthenticated billing, Google and email requests and unsigned PayPal events. Integration configuration status is independently visible in Workspace settings.

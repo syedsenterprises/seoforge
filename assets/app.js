@@ -181,8 +181,8 @@ async function loadCloudData(){
   if (generation !== authGeneration || currentUser?.id !== uid) return;
   S.cache.audits = audits.map(a => ({ id:a.id, date:(a.created_at||"").slice(0,10), url:a.url, total:null, ok:null, failed:null, psi:a.score, lcp:(a.lcp!=null?String(a.lcp):null), cls:(a.cls!=null?String(a.cls):null) }));
   const checksByKw = {};
-  rankChecks.forEach(c => { (checksByKw[c.keyword_id] = checksByKw[c.keyword_id] || []).push({ date:(c.checked_at||"").slice(0,10), position:c.position }); });
-  S.cache.keywords = keywords.map(k => ({ id:k.id, keyword:k.keyword, url:k.url||"", difficulty:(k.difficulty==null?null:k.difficulty), checks:(checksByKw[k.id]||[]).sort((a,b)=>a.date.localeCompare(b.date)) }));
+  rankChecks.forEach(c => { (checksByKw[c.keyword_id] = checksByKw[c.keyword_id] || []).push({ date:(c.checked_at||"").slice(0,10), position:c.position, checkedAt:c.checked_at }); });
+  S.cache.keywords = keywords.map(k => ({ id:k.id, keyword:k.keyword, url:k.url||"", difficulty:(k.difficulty==null?null:k.difficulty), checks:(checksByKw[k.id]||[]).sort((a,b)=>(a.checkedAt||a.date).localeCompare(b.checkedAt||b.date)) }));
   S.cache.links = groupVerifiedRows(vlinks);
   S.cache.revenue = revenue.map(r => ({ id:r.id, date:r.entry_date, network:r.network, amount:r.amount }));
   S.cache.listings = listings.map(l => ({ id:l.id, site:l.site_url, niche:l.niche||"", price:l.price, da:(l.da==null?"":String(l.da)), dr:(l.dr==null?"":String(l.dr)), title:(l.site_url||"").replace(/^https?:\/\//,""), desc:"Custom listing added by you." }));
@@ -215,7 +215,7 @@ function groupVerifiedRows(rows){
 /* Guest data stays on this device. Never auto-upload shared-browser data into an account. */
 
 async function cloudInsertAudit(a){
-  const { data, error } = await sb.from("audits").insert({ user_id:currentUser.id, url:a.url, score:(a.psi==null?null:a.psi), lcp:numOrNull(a.lcp), cls:numOrNull(a.cls), created_at:a.date+"T12:00:00Z" }).select("id").single();
+  const { data, error } = await sb.from("audits").insert({ user_id:currentUser.id, url:a.url, score:(a.psi==null?null:a.psi), lcp:numOrNull(a.lcp), cls:numOrNull(a.cls), created_at:new Date().toISOString() }).select("id").single();
   if(error) throw new Error("Audit could not be saved: " + error.message);
   return data.id;
 }
@@ -745,7 +745,7 @@ async function checkRank(idx, btn){
       }catch(e){ /* skip bad href */ }
     }
     if(S.mode==='cloud' && item.id){
-      const { error } = await sb.from("rank_checks").insert({ user_id:currentUser.id, keyword_id:item.id, position, checked_at:todayISO()+"T12:00:00Z" });
+      const { error } = await sb.from("rank_checks").insert({ user_id:currentUser.id, keyword_id:item.id, position, checked_at:new Date().toISOString() });
       if(error) throw new Error("Rank check could not be saved: " + error.message);
     }
     item.checks.push({ date: todayISO(), position });
