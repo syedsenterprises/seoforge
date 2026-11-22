@@ -372,3 +372,7 @@ PageSpeed 429s are shown exactly as returned.
 - The three new Supabase tables being created (the parallel task) and the
   `keywords.difficulty` column — until then the app runs on the localStorage
   fallback path by design.
+
+  ## Support this project
+
+  If this project is useful to you, consider sponsoring its development: https://github.com/sponsors/syedsenterprises
