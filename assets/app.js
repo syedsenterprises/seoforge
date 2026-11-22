@@ -24,6 +24,8 @@ const GOOGLE_OAUTH_FN = SUPABASE_URL + "/functions/v1/google-oauth";
 const ALERT_FN = SUPABASE_URL + "/functions/v1/send-alert";
 
 /* Supabase client (guarded: if the CDN fails, the app still works in local mode). */
+const activeRequests = new Set();
+function cancelPendingRequests(){ for(const controller of activeRequests) controller.abort(); activeRequests.clear(); }
 let sb = null, cloudAvailable = false;
 try{
   if(window.supabase && window.supabase.createClient){
@@ -57,6 +59,7 @@ const S = {
 };
 let currentUser = null;   /* Supabase user object when signed in */
 let currentPlan = 'free'; /* 'free' | 'pro' */
+let cloudUsage = null, usageLoading = false;
 let cloudUserId = null;   /* guards against double-loading on auth events */
 
 /* ---------- views ---------- */
@@ -178,8 +181,8 @@ async function loadCloudData(){
   if (generation !== authGeneration || currentUser?.id !== uid) return;
   S.cache.audits = audits.map(a => ({ id:a.id, date:(a.created_at||"").slice(0,10), url:a.url, total:null, ok:null, failed:null, psi:a.score, lcp:(a.lcp!=null?String(a.lcp):null), cls:(a.cls!=null?String(a.cls):null) }));
   const checksByKw = {};
-  rankChecks.forEach(c => { (checksByKw[c.keyword_id] = checksByKw[c.keyword_id] || []).push({ date:(c.checked_at||"").slice(0,10), position:c.position }); });
-  S.cache.keywords = keywords.map(k => ({ id:k.id, keyword:k.keyword, url:k.url||"", difficulty:(k.difficulty==null?null:k.difficulty), checks:(checksByKw[k.id]||[]).sort((a,b)=>a.date.localeCompare(b.date)) }));
+  rankChecks.forEach(c => { (checksByKw[c.keyword_id] = checksByKw[c.keyword_id] || []).push({ date:(c.checked_at||"").slice(0,10), position:c.position, checkedAt:c.checked_at }); });
+  S.cache.keywords = keywords.map(k => ({ id:k.id, keyword:k.keyword, url:k.url||"", difficulty:(k.difficulty==null?null:k.difficulty), checks:(checksByKw[k.id]||[]).sort((a,b)=>(a.checkedAt||a.date).localeCompare(b.checkedAt||b.date)) }));
   S.cache.links = groupVerifiedRows(vlinks);
   S.cache.revenue = revenue.map(r => ({ id:r.id, date:r.entry_date, network:r.network, amount:r.amount }));
   S.cache.listings = listings.map(l => ({ id:l.id, site:l.site_url, niche:l.niche||"", price:l.price, da:(l.da==null?"":String(l.da)), dr:(l.dr==null?"":String(l.dr)), title:(l.site_url||"").replace(/^https?:\/\//,""), desc:"Custom listing added by you." }));
@@ -199,7 +202,7 @@ function groupVerifiedRows(rows){
   const map = new Map();
   rows.forEach(r => {
     const d = (r.checked_at||"").slice(0,10);
-    const key = r.page_url + "|" + r.target_domain + "|" + (r.checked_at||"");
+    const key = r.observation_id || (r.page_url + "|" + r.target_domain + "|" + (r.checked_at||""));
     if(!map.has(key)) map.set(key, { date:d, page:r.page_url, domain:r.target_domain, hits:[] });
     map.get(key).hits.push(r);
   });
@@ -212,7 +215,7 @@ function groupVerifiedRows(rows){
 /* Guest data stays on this device. Never auto-upload shared-browser data into an account. */
 
 async function cloudInsertAudit(a){
-  const { data, error } = await sb.from("audits").insert({ user_id:currentUser.id, url:a.url, score:(a.psi==null?null:a.psi), lcp:numOrNull(a.lcp), cls:numOrNull(a.cls), created_at:a.date+"T12:00:00Z" }).select("id").single();
+  const { data, error } = await sb.from("audits").insert({ user_id:currentUser.id, url:a.url, score:(a.psi==null?null:a.psi), lcp:numOrNull(a.lcp), cls:numOrNull(a.cls), created_at:new Date().toISOString() }).select("id").single();
   if(error) throw new Error("Audit could not be saved: " + error.message);
   return data.id;
 }
@@ -221,8 +224,11 @@ let signInTask = null;
 let signingInId = null;
 async function afterSignIn(user){
   if(!user) return;
+  if(cloudUserId === user.id && currentUser?.id === user.id) return;
+  if(currentUser?.id !== user.id) cancelPendingRequests();
   if(signInTask && signingInId === user.id) return signInTask;
   const generation = ++authGeneration;
+  cloudUsage = null;
   currentUser = user;
   S.mode = "cloud";
   S.cache = { audits:[], keywords:[], links:[], revenue:[], listings:[], orders:[], briefs:[], competitors:[], toolChecks:[] };
@@ -271,7 +277,9 @@ async function doSignIn(){
   if(data.user) await afterSignIn(data.user);
 }
 function clearAuthState(){
+  cancelPendingRequests();
   ++authGeneration; signInTask = null; signingInId = null;
+  cloudUsage = null;
   currentUser = null; currentPlan = "free"; cloudUserId = null; S.mode = "local";
   S.cache = { audits:[], keywords:[], links:[], revenue:[], listings:[], orders:[], briefs:[], competitors:[], toolChecks:[] };
   refreshAuthUI(); showLanding(); renderAll(); loadPreferences();
@@ -311,6 +319,7 @@ async function initAuth(){
 
 /* ---------- free-plan usage ---------- */
 function usageThisMonth(){
+  if(currentUser && cloudUsage) return cloudUsage;
   const m = thisMonthPrefix();
   const auditsUsed = S.get("audits", []).filter(a => (a.date||"").indexOf(m) === 0).length;
   const linksUsed = S.get("links", []).filter(l => (l.date||"").indexOf(m) === 0).length;
@@ -332,6 +341,17 @@ function limitNoteText(){
 function renderLimitNotes(){
   const t = limitNoteText();
   ["auditLimitNote","lvLimitNote","rkLimitNote","blLimitNote","rdLimitNote","scLimitNote","rbLimitNote","smLimitNote","brLimitNote","cpLimitNote","hcLimitNote","bkLimitNote"].forEach(id => { const el = $(id); if(el) el.textContent = t; });
+  if(currentUser && sb && !usageLoading){
+    usageLoading = true;
+    const uid=currentUser.id;
+    sb.rpc("current_usage").then(({data,error})=>{
+      if(!error && data && currentUser?.id===uid){
+        cloudUsage=data;
+        document.querySelectorAll(".limit-note").forEach(el=>el.textContent=limitNoteText());
+        renderPlanCard();
+      }
+    }).catch(()=>{}).finally(()=>{usageLoading=false;});
+  }
 }
 function renderPlanCard(){
   const el = $("planCard"); if(!el) return;
@@ -353,8 +373,9 @@ function renderPlanCard(){
 /* ---------- fetch helpers (honest errors, proxy fallback) ---------- */
 function fetchTimeout(url, ms){
   const c = new AbortController();
+  activeRequests.add(c);
   const t = setTimeout(() => c.abort(), ms);
-  return fetch(url, {signal:c.signal}).finally(() => clearTimeout(t));
+  return fetch(url, {signal:c.signal}).finally(() => { clearTimeout(t); activeRequests.delete(c); });
 }
 const PROXIES = [
   u => "https://api.allorigins.win/raw?url=" + encodeURIComponent(u),
@@ -724,7 +745,7 @@ async function checkRank(idx, btn){
       }catch(e){ /* skip bad href */ }
     }
     if(S.mode==='cloud' && item.id){
-      const { error } = await sb.from("rank_checks").insert({ user_id:currentUser.id, keyword_id:item.id, position, checked_at:todayISO()+"T12:00:00Z" });
+      const { error } = await sb.from("rank_checks").insert({ user_id:currentUser.id, keyword_id:item.id, position, checked_at:new Date().toISOString() });
       if(error) throw new Error("Rank check could not be saved: " + error.message);
     }
     item.checks.push({ date: todayISO(), position });
@@ -779,14 +800,15 @@ async function runLinkVerify(){
     if(!hits.length){
       out.innerHTML = '<div class="warn"><b>No link found.</b> The page ' + esc(page) + ' contains no link to ' + esc(domain) + ' (checked ' + anchors.length + ' links on the page). The link may not exist, or the page may load links with JavaScript, which this checker cannot see.</div>';
       if(S.mode==='cloud'){
-        const { error } = await sb.from("verified_links").insert({ user_id:currentUser.id, page_url:page, target_domain:domain, anchor:null, rel:null, found:false, checked_at:checkedAt });
+        const { error } = await sb.rpc("save_link_observation",{p_page:page,p_domain:domain,p_hits:[]});
         if(error){ out.innerHTML += '<div class="warn">Saving this check to your account failed: ' + esc(error.message) + '</div>'; }
         else{
           const saved = S.get("links", []);
           saved.unshift({ date:todayISO(), page, domain, count:0, types:"No link found" });
           S.cache.links = saved.slice(0,50);
         }
-      }
+      }else{ LS.set("links",[{date:todayISO(),page,domain,count:0,types:"No link found"}].concat(LS.get("links",[])).slice(0,50)); }
+      renderLinkHistory(); renderDashboard(); renderLimitNotes();
     }else{
       const rows = hits.map(h => {
         const c = classifyRel(h.rel);
@@ -797,7 +819,7 @@ async function runLinkVerify(){
         + '<p class="muted">Paid/sponsored links should be rel="sponsored" (or nofollow). A paid link showing as Dofollow needs fixing.</p>';
       const types = [...new Set(hits.map(h => classifyRel(h.rel).label))].join(", ");
       if(S.mode==='cloud'){
-        const { error } = await sb.from("verified_links").insert(hits.map(h => ({ user_id:currentUser.id, page_url:page, target_domain:domain, anchor:h.anchor, rel:h.rel||null, found:true, checked_at:checkedAt })));
+        const { error } = await sb.rpc("save_link_observation",{p_page:page,p_domain:domain,p_hits:hits.map(h=>({anchor:h.anchor,rel:h.rel||null}))});
         if(error){ out.innerHTML += '<div class="warn">Saving this check to your account failed: ' + esc(error.message) + '</div>'; }
         else{
           const saved = S.get("links", []);
@@ -874,12 +896,9 @@ $("revAddBtn").addEventListener("click", async () => {
 function loadSettings(){
   const s = LS.get("settings", {});
   $("setPsi").value = s.psiKey||"";
-  $("setAdsterra").value = s.adsterraKey||"";
-  $("setMonetag").value = s.monetagKey||"";
-  $("setAdsense").value = s.adsenseKey||"";
 }
 $("setSaveBtn").addEventListener("click", () => {
-  LS.set("settings", { psiKey:$("setPsi").value.trim(), adsterraKey:$("setAdsterra").value.trim(), monetagKey:$("setMonetag").value.trim(), adsenseKey:$("setAdsense").value.trim() });
+  LS.set("settings", { psiKey:$("setPsi").value.trim() });
   $("setSaved").textContent = "Saved in this browser.";
   setTimeout(() => { $("setSaved").textContent = ""; }, 3000);
 });
@@ -1213,20 +1232,15 @@ async function loadNotifPref(){
   box.checked = !!val;
 }
 async function saveNotifPref(){
-  const box = $("notifWeekly"); if(!box) return;
-  const val = !!box.checked;
-  let saved = false;
-  if(currentUser && sb){
-    try{
-      const { error } = await sb.from("profiles").update({ weekly_summary: val }).eq("id", currentUser.id);
-      if(!error) saved = true;
-    }catch(e){ saved = false; }
-  }
-  if(!saved) LS.set("notifWeekly", val);
-  $("notifSaved").textContent = saved
-    ? "Saved to your account."
-    : "Saved in this browser (the account column is not set up yet — see README).";
-  setTimeout(() => { $("notifSaved").textContent = ""; }, 4000);
+  const box=$("notifWeekly"),button=$("notifSaveBtn"),out=$("notifSaved");
+  if(!currentUser || !sb){out.textContent="Sign in to save email preferences. Guest mode does not send emails.";return;}
+  button.disabled=true;
+  try {
+    const {error}=await sb.from("profiles").update({weekly_summary:!!box.checked}).eq("id",currentUser.id);
+    if(error) throw error;
+    out.textContent=box.checked?"Weekly summaries enabled for your account when email service is configured.":"Email summaries disabled for your account.";
+  }catch(e){out.textContent="Not saved. Your previous email preference remains active: "+e.message;await loadNotifPref();}
+  finally {button.disabled=false;}
 }
 $("notifSaveBtn").addEventListener("click", saveNotifPref);
 
@@ -1312,6 +1326,7 @@ function downloadCSV(filename, header, rows){
 
 /* ---------- v2.5 free-plan usage ---------- */
 function v25Usage(){
+  if(currentUser && cloudUsage) return cloudUsage;
   const m = thisMonthPrefix();
   const briefsUsed = S.get("briefs", []).filter(b => (b.date||"").indexOf(m)===0).length;
   const compRows = S.get("competitors", []).filter(c => (c.date||"").indexOf(m)===0).length;
@@ -1853,8 +1868,12 @@ async function runCompare(){
     + '<tr><td><b>Word count</b></td><td>' + cell(rows[0],'words') + '</td><td>' + cell(rows[1],'words') + '</td></tr>'
     + '</table></div><p class="muted">PageSpeed scores come from Google; the on-page numbers come from reading each page live. Word counts are estimates from visible text.</p>';
   prog.textContent = "";
-  await recordCompetitors([aUrl, bUrl]);
-  renderCompetitors(); renderLimitNotes();
+  try {
+    await recordCompetitors([aUrl, bUrl]);
+    renderCompetitors(); renderLimitNotes();
+  } catch(e) {
+    out.innerHTML += '<div class="warn" role="alert"><b>Comparison not saved.</b> ' + esc(e.message) + ' The results above are available to copy, but will not survive a reload.</div>';
+  }
 }
 async function recordCompetitors(urls){
   if(S.mode === "cloud"){
@@ -2098,7 +2117,7 @@ function applyPreferences(p){
   document.documentElement.style.setProperty("--teal", p.accent);
   $("workspaceName").textContent = p.brand;
   $("psiStrategy").value = p.strategy;
-  ["auditUrl","serpUrl","hcUrl"].forEach(id => { const el=$(id); if(el && !el.value) el.value=p.defaultSite; });
+  ["auditUrl","serpUrl","hcUrl"].forEach(id => { const el=$(id); if(el && p.defaultSite && (!el.value || el.value===el.dataset.defaultSite || el.value===el.defaultValue)){el.value=p.defaultSite;el.dataset.defaultSite=p.defaultSite;} });
 }
 $("prefSave").addEventListener("click", () => {
   try {
@@ -2108,11 +2127,34 @@ $("prefSave").addEventListener("click", () => {
   } catch(e){ showBanner(e.message,"warn"); }
 });
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change",()=>applyPreferences(SEOForgeCore.validatePreferences(LS.get("preferences",{}))));
-$("backupExport").addEventListener("click",()=>{
+async function collectAccountExport(){
+  const uid=currentUser?.id;
+  const generation=authGeneration;
+  if(!uid) return Object.fromEntries(Object.keys(S.cache).map(k=>[k,S.get(k,[])]));
   const data={};
-  Object.keys(S.cache).forEach(k=>{ data[k]=S.get(k,[]); });
-  downloadFile("seoforge-backup-"+todayISO()+".json",JSON.stringify({version:1,exportedAt:new Date().toISOString(),mode:S.mode,data},null,2),"application/json");
-  showBanner("Backup exported. API keys and authentication tokens are excluded. Cloud exports contain the loaded history, which may be capped.", "ok");
+  for(const table of ["audits","keywords","rank_checks","verified_links","revenue_entries","listings","orders","content_briefs","competitors","site_checks"]){
+    data[table]=[];
+    for(let offset=0;;offset+=500){
+      if(generation!==authGeneration || currentUser?.id!==uid) throw new Error("Account changed. Export cancelled.");
+      const {data:rows,error}=await sb.from(table).select("*").eq("user_id",uid).order("id").range(offset,offset+499);
+      if(error) throw new Error("Export failed for "+table+": "+error.message);
+      data[table].push(...(rows||[]));
+      if((rows||[]).length<500) break;
+      if(offset>=99500) throw new Error("This account exceeds the browser export limit. Contact support for a database export.");
+    }
+  }
+  if(generation!==authGeneration || currentUser?.id!==uid) throw new Error("Account changed. Export cancelled.");
+  return data;
+}
+$("backupExport").addEventListener("click",async()=>{
+  const button=$("backupExport"); button.disabled=true;
+  try {
+    const mode=S.mode;
+    const data=await collectAccountExport();
+    downloadFile("seoforge-backup-"+todayISO()+".json",JSON.stringify({version:2,exportedAt:new Date().toISOString(),mode,data},null,2),"application/json");
+    showBanner("Export complete. API keys and authentication tokens are excluded.", "ok");
+  } catch(e){ showBanner(e.message,"warn"); }
+  finally {button.disabled=false;}
 });
 $("forgotPassword").addEventListener("click",async()=>{
   if(!sb){ showAuthMsg("Cloud authentication is unavailable."); return; }
@@ -2138,6 +2180,30 @@ $("recoverySave").addEventListener("click",async()=>{
   finally { $("recoverySave").disabled=false; }
 });
 loadPreferences();
+
+
+async function loadCapabilities(){
+  const out=$("integrationReadiness");
+  try {
+    const response=await fetchTimeout(SUPABASE_URL+"/functions/v1/status",10000);
+    if(!response.ok) throw new Error("Status unavailable");
+    const status=await response.json();
+    out.textContent="Google reports: "+(status.google?"configured":"awaiting setup")+" · Paid checkout: "+(status.billing?"enabled":"not enabled")+" · Email: "+(status.email&&status.emailScheduled?"scheduled":status.email?"configured; schedule pending":"awaiting setup");
+  }catch {out.textContent="Integration status unavailable. Core tools remain available.";}
+}
+$("integrationRefresh").addEventListener("click",loadCapabilities);
+$("billingRefresh").addEventListener("click",async()=>{
+  if(!currentUser){focusAuth();showAuthMsg("Sign in to refresh billing.");return;}
+  const uid=currentUser.id;
+  try {
+    const token=await supabaseAccessToken();
+    const response=await fetchJsonTimeout(SUPABASE_URL+"/functions/v1/billing",30000,{method:"POST",headers:{Authorization:"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify({action:"refresh"})});
+    const data=await response.json(); if(!response.ok) throw new Error(data.error||"Billing refresh failed");
+    if(currentUser?.id!==uid) return;
+    currentPlan=data.plan; refreshAuthUI();renderPlanCard();renderLimitNotes();showBanner("Billing status refreshed.","ok");
+  }catch(e){showBanner(e.message,"warn");}
+});
+loadCapabilities();
 
 /* ---------- init ---------- */
 function renderAll(){

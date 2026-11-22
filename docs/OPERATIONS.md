@@ -32,7 +32,7 @@ Check Google redirect URIs and Supabase Auth redirect allowlists. Enable Search 
 
 ## Billing lifecycle
 
-Authenticated checkout creates a PayPal subscription with custom_id set to the user ID and stores the binding before returning an approval URL. A stable PayPal request ID prevents concurrent duplicate creates within PayPal's idempotency window.
+Authenticated checkout creates a PayPal subscription with custom_id set to the user ID and stores the binding before returning an approval URL. A database-backed request ID is stable for retries of one checkout attempt and rotates when a terminal subscription is replaced.
 
 The webhook verifies the signature, fetches current subscription state, validates plan/account, and applies events transactionally. Duplicate IDs and older provider timestamps do not overwrite entitlement. Only ACTIVE grants Pro.
 
@@ -78,3 +78,17 @@ V2 guest records remain local. Automatic migration was removed to avoid cross-ac
 Most application logic remains in app.js. Further split tool controllers as features grow. Full browser E2E and load tests have not been completed in this environment.
 
 Enable leaked-password protection if available on the Supabase plan. Add monitoring, restore tests, privacy/terms policies and operational ownership before paid launch.
+
+## v2.8 updates
+
+- Apply database/release-usage.sql after harden-existing.sql on new projects. The hosted project already has seoforge_release_usage_and_rate_limits applied.
+- Deploy status alongside the four existing functions. Pass a relative deno.json import-map path when updating functions to avoid stale deployment paths.
+- Browser CI runs Chromium at 1440px and 390px on pinned Ubuntu 24.04. It exercises every tool tab, theme persistence, rank/revenue entries, exports and forged billing returns using isolated browser contexts and blocked external calls.
+- Cloud export now reads all pages (up to 100,000 rows per table) and fails without downloading partial results. This supersedes the earlier loaded-only export limitation. Avoid editing records during the export; it is not a transactional database snapshot.
+- The production smoke workflow checks public availability and unauthenticated endpoint rejection every six hours. GitHub Actions notifications provide failure reporting; configure repository notification recipients for operational ownership.
+- Refresh subscription reconciles the account's current provider state after a delayed webhook. API calls are limited per account/minute.
+- Email preference failures explicitly retain the prior preference instead of pretending a local save changed delivery.
+
+## Final review fixes
+
+Apply database/release-observations.sql after release-usage.sql on new installs. It assigns monthly observation IDs on the server, restricts direct link writes to the validated save_link_observation RPC, and persists PayPal attempt IDs so cancellation followed by resubscription gets a fresh checkout. Transactional tests cover both behaviors. The password recovery panel is outside the landing-only view; browser tests check its actual visibility and dark-mode landing-card contrast. Failed comparison saves keep the computed table with an explicit unsaved warning.

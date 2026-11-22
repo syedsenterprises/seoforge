@@ -70,3 +70,30 @@ test("Storage failures provide a recoverable error",()=>{
   const a=app();a.context.localStorage.setItem=()=>{throw Error("QuotaExceeded");};
   assert.throws(()=>a.run('LS.set("audits",[])'),/storage is full/);
 });
+
+test("Cloud export reads every page and excludes token/config tables",async()=>{
+  const a=app();
+  const calls=[];
+  a.context.mockDb={from(table){calls.push(table);return{select(){return this;},eq(){return this;},order(){return this;},range(from,to){return Promise.resolve({data:from===0?Array.from({length:500},(_,i)=>({id:String(i)})):[{id:"last"}],error:null});}};}};
+  a.run('currentUser={id:"alice"};sb=mockDb;');
+  const data=await a.run("collectAccountExport()");
+  assert.equal(data.audits.length,501);
+  assert.ok(!calls.includes("google_tokens"));
+  assert.ok(!calls.includes("profiles"));
+});
+test("Cloud export aborts after a database error instead of downloading partial data",async()=>{
+  const a=app();
+  a.context.mockDb={from(){return{select(){return this;},eq(){return this;},order(){return this;},range(){return Promise.resolve({data:null,error:{message:"offline"}});}};}};
+  a.run('currentUser={id:"alice"};sb=mockDb;');
+  await assert.rejects(a.run("collectAccountExport()"),/Export failed/);
+});
+
+test("Failed comparison persistence keeps the result and shows an unsaved warning",async()=>{
+  const a=app();
+  a.elements.get("cpA").value="https://a.example";
+  a.elements.get("cpB").value="https://b.example";
+  a.run('runPSI=async()=>({score:70});fetchPageDoc=async()=>{throw Error("offline");};recordCompetitors=async()=>{throw Error("database unavailable");};');
+  await a.run("runCompare()");
+  assert.match(a.elements.get("cpOut").innerHTML,/Comparison not saved/);
+  assert.match(a.elements.get("cpOut").innerHTML,/<table>/);
+});
