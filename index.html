@@ -11,7 +11,7 @@
 <body>
 <header>
   <div class="wrap">
-    <h1>SEO<span>Forge</span> <span style="font-size:12px;color:#94a3b8;font-weight:400">v2.6</span></h1>
+    <h1>SEO<span>Forge</span> <span style="font-size:12px;color:#94a3b8;font-weight:400">v2.8</span></h1>
     <p>SEO audit, keywords, rank tracking, link checks, ad revenue &amp; link sales — one dashboard by Syeds Enterprises. Free sources only. No invented numbers.</p>
     <div id="authBar">
       <div id="authLoggedOut" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;width:100%">
@@ -44,7 +44,7 @@
         <button class="btn" id="landingSignupBtn">Create a free account</button>
         <button class="btn secondary" id="landingLaunchBtn">Launch app — no sign-up needed</button>
       </div>
-      <p class="muted" style="margin-top:12px">No card required for the free plan. Your data is yours — export it any time by asking us.</p>
+      <p class="muted" style="margin-top:12px">No card required for the free plan. Your data is yours — export it any time from Workspace settings.</p>
     </div>
     <div class="features">
       <div class="feature"><b>Site Audit</b><span>Crawl a sitemap and check every URL, plus a real Google PageSpeed score, LCP and CLS.</span></div>
@@ -55,7 +55,7 @@
       <div class="feature"><b>Link Marketplace</b><span>List a site for sponsored links and record orders. Real inventory only — no fake listings or buyers.</span></div>
       <div class="feature"><b>Dashboard</b><span>Your totals in one place: audits run, keywords tracked, links verified, revenue logged, orders.</span></div>
       <div class="feature"><b>SERP Preview</b><span>See how a page looks in Google results and when shared — real title, meta description and Open Graph tags.</span></div>
-      <div class="feature"><b>Broken Link Checker</b><span>Every link on a page checked live, with real status codes and a CSV export.</span></div>
+      <div class="feature"><b>Broken Link Checker</b><span>Check up to 100 links on a page, with reported HTTP status codes and CSV export.</span></div>
       <div class="feature"><b>Redirect Chain Checker</b><span>Follow a URL's redirects hop by hop, with the final URL and status.</span></div>
       <div class="feature"><b>Schema Detector</b><span>Finds every JSON-LD block on a page and lists its type — Article, FAQPage, Product and more.</span></div>
       <div class="feature"><b>Robots &amp; Sitemap</b><span>Test a robots.txt against any path, generate a new one, and build a sitemap.xml from a site's own links.</span></div>
@@ -182,7 +182,7 @@
       <li><b>Keyword Explorer:</b> live suggestions from Google Suggest. Search volume is <b>not</b> available without a paid keyword API — it is never invented here.</li>
       <li><b>Rank Tracker:</b> checks DuckDuckGo results, <b>not Google</b>. Position is honest for that source only.</li>
       <li><b>Link Verifier:</b> reads the live linking page and reports the real <code>rel</code> attribute (dofollow / nofollow / sponsored / ugc).</li>
-      <li><b>Ad Revenue:</b> manual logging only in v2. Live sync needs your network API keys (v3).</li>
+      <li><b>Ad Revenue:</b> manual logging only in v2. Network synchronization is not currently available.</li>
       <li><b>Backlink index:</b> there is <b>no free Ahrefs/Semrush backlink index</b>. SEOForge does not fake one — verify links directly with the Link Verifier.</li>
       <li><b>Keyword Difficulty:</b> an estimate from the live DuckDuckGo top 10 (authority domains, exact-match titles, .gov/.edu) — not a paid index.</li>
       <li><b>Redirect chains:</b> free proxies follow redirects on their own servers, so intermediate hops are only shown when the proxy exposes them; the final URL is shown when it can be read.</li>
@@ -322,19 +322,13 @@
     <div id="revList"></div>
   </div>
   <div class="card">
-    <h2>Settings — API keys (optional, v3)</h2>
+    <h2>Settings — PageSpeed API key (optional)</h2>
     <p class="muted">Keys are stored <b>only in this browser's localStorage</b> and are never sent anywhere except to the service they belong to, when you run a check. Leave blank to keep using free no-key endpoints.</p>
     <label for="setPsi">Google PageSpeed Insights API key (free from Google Cloud Console — raises the daily quota)</label>
     <input type="text" id="setPsi" placeholder="Leave blank for no-key mode">
-    <label for="setAdsterra">Adsterra API key (v3 live sync — not used yet)</label>
-    <input type="text" id="setAdsterra" placeholder="Leave blank">
-    <label for="setMonetag">Monetag API key (v3 live sync — not used yet)</label>
-    <input type="text" id="setMonetag" placeholder="Leave blank">
-    <label for="setAdsense">AdSense API key (v3 live sync — not used yet)</label>
-    <input type="text" id="setAdsense" placeholder="Leave blank">
     <button class="btn" id="setSaveBtn">Save settings</button>
     <span class="muted" id="setSaved"></span>
-    <div class="note">Live sync needs your network API keys — add them here when v3 arrives. Until then, revenue is manual logging only.</div>
+    <div class="note">Revenue is logged manually. No ad-network credentials are collected.</div>
   </div>
   <div class="card">
     <h2>Integrations — Google &amp; email alerts</h2>
@@ -390,7 +384,7 @@
   </div>
 </section>
 
-<!-- ============ SEARCH CONSOLE + ANALYTICS (v2.6) ============ -->
+<!-- ============ SEARCH CONSOLE + ANALYTICS (v2.8) ============ -->
 <section class="tab" id="tab-gsc">
   <div class="card">
     <h2>Search Console &amp; Analytics</h2>

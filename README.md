@@ -55,3 +55,7 @@ Account/billing protection SQL was applied to the existing Supabase project and 
 Paid checkout defaults to disabled. Google client secret, PayPal credentials/webhook registration, and Resend sender/scheduling require operator configuration. Never put secrets in GitHub files.
 
 This is a hardening and customization release, **not a claim that all production integrations are verified**. Read the operations guide before a paid launch.
+
+## v2.8 release completion
+
+Adds complete paginated account exports, authoritative usage counts, integration readiness, subscription refresh, per-account API rate limits, desktop/mobile browser smoke tests and six-hourly public endpoint monitoring. Apply database/release-usage.sql after the hardening upgrade on new installations. Both SQL upgrades are already applied to the hosted project. The status function reports configuration without disclosing secret values. Live paid activation still requires verified provider configuration.

@@ -78,3 +78,13 @@ V2 guest records remain local. Automatic migration was removed to avoid cross-ac
 Most application logic remains in app.js. Further split tool controllers as features grow. Full browser E2E and load tests have not been completed in this environment.
 
 Enable leaked-password protection if available on the Supabase plan. Add monitoring, restore tests, privacy/terms policies and operational ownership before paid launch.
+
+## v2.8 updates
+
+- Apply database/release-usage.sql after harden-existing.sql on new projects. The hosted project already has seoforge_release_usage_and_rate_limits applied.
+- Deploy status alongside the four existing functions. Pass a relative deno.json import-map path when updating functions to avoid stale deployment paths.
+- Browser CI runs Chromium at 1440px and 390px on pinned Ubuntu 24.04. It exercises every tool tab, theme persistence, rank/revenue entries, exports and forged billing returns using isolated browser contexts and blocked external calls.
+- Cloud export now reads all pages (up to 100,000 rows per table) and fails without downloading partial results. This supersedes the earlier loaded-only export limitation. Avoid editing records during the export; it is not a transactional database snapshot.
+- The production smoke workflow checks public availability and unauthenticated endpoint rejection every six hours. GitHub Actions notifications provide failure reporting; configure repository notification recipients for operational ownership.
+- Refresh subscription reconciles the account's current provider state after a delayed webhook. API calls are limited per account/minute.
+- Email preference failures explicitly retain the prior preference instead of pretending a local save changed delivery.

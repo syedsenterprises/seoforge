@@ -895,12 +895,9 @@ $("revAddBtn").addEventListener("click", async () => {
 function loadSettings(){
   const s = LS.get("settings", {});
   $("setPsi").value = s.psiKey||"";
-  $("setAdsterra").value = s.adsterraKey||"";
-  $("setMonetag").value = s.monetagKey||"";
-  $("setAdsense").value = s.adsenseKey||"";
 }
 $("setSaveBtn").addEventListener("click", () => {
-  LS.set("settings", { psiKey:$("setPsi").value.trim(), adsterraKey:$("setAdsterra").value.trim(), monetagKey:$("setMonetag").value.trim(), adsenseKey:$("setAdsense").value.trim() });
+  LS.set("settings", { psiKey:$("setPsi").value.trim() });
   $("setSaved").textContent = "Saved in this browser.";
   setTimeout(() => { $("setSaved").textContent = ""; }, 3000);
 });
