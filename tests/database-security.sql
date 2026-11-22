@@ -1,4 +1,4 @@
--- Run after harden-existing.sql in a disposable staging database.
+-- Transactional release verification; fixtures are rolled back.
 begin;
 
 -- All fixture writes and schema changes in this verification are rolled back.
@@ -35,6 +35,7 @@ begin
  exception when raise_exception then
    if sqlerrm not like 'Free monthly limit reached%' then raise; end if;
  end;
+ if (public.current_usage()->>'auditsUsed')::int<>5 then raise exception 'FAIL: authoritative usage'; end if;
  delete from public.audits where user_id=auth.uid();
  begin
    insert into public.audits(user_id,url) values(auth.uid(),'https://example.invalid/7');
@@ -42,6 +43,16 @@ begin
  exception when raise_exception then
    if sqlerrm not like 'Free monthly limit reached%' then raise; end if;
  end;
+end $$;
+reset role;
+set local role service_role;
+do $$
+declare i int; allowed boolean;
+begin
+ for i in 1..11 loop
+  allowed:=public.claim_api_request(current_setting('seoforge.test_a')::uuid,'billing',10);
+  if allowed<>(i<=10) then raise exception 'FAIL: API rate limit'; end if;
+ end loop;
 end $$;
 reset role;
 rollback;

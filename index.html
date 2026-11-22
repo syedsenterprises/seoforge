@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SEOForge by Syeds Enterprises — SEO, Ads &amp; Links in One Place</title>
-<meta name="description" content="SEOForge v2.6: site audit, keyword explorer, rank tracking, link checks, SERP preview, broken-link and redirect checks, schema detector, robots/sitemap tools, content briefs, competitor compare, Search Console &amp; Analytics, ad revenue hub and link marketplace. Free plan or Pro $9/month. Free data sources only, no invented numbers.">
+<meta name="description" content="SEOForge v2.8: site audit, keyword explorer, rank tracking, link checks, SERP preview, broken-link and redirect checks, schema detector, robots/sitemap tools, content briefs, competitor compare, Search Console &amp; Analytics, ad revenue hub and link marketplace. Free plan or Pro $9/month. Free data sources only, no invented numbers.">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.2"></script>
 <link rel="stylesheet" href="./assets/styles.css">
 </head>
@@ -147,7 +147,7 @@
   <div class="card" id="planCard"></div>
   <div class="card">
     <h2>Dashboard</h2>
-    <p class="muted" id="dashStoreNote">Totals are computed from what is saved in this browser only (localStorage). Nothing leaves your device.</p>
+    <p class="muted" id="dashStoreNote">Totals are computed from what is saved in this browser only (localStorage). Live tools send requested URLs and keywords to external providers.</p>
     <div class="grid">
       <div class="stat"><b id="stAudits">0</b><span>site audits run</span></div>
       <div class="stat"><b id="stKeywords">0</b><span>keywords tracked</span></div>
@@ -282,7 +282,7 @@
 </section>
 
 <!-- ============ AD REVENUE ============ -->
-<section class="tab" id="tab-preferences">
+<section class="tab" id="tab-preferences"><div class="card"><h2>Integration status</h2><p id="integrationReadiness" role="status">Checking integration readiness…</p><button class="btn secondary" id="integrationRefresh">Refresh status</button><button class="btn secondary" id="billingRefresh">Refresh subscription</button><p><a href="https://www.paypal.com/myaccount/autopay/" target="_blank" rel="noopener">Manage or cancel PayPal subscriptions</a></p></div>
 <div class="card">
 <h2 id="workspaceName">SEOForge</h2><p class="muted">Personalize this workspace. Preferences are saved per account in this browser.</p>
 <label for="prefBrand">Workspace name</label><input id="prefBrand" type="text" maxlength="60">
@@ -292,7 +292,7 @@
 <label for="prefSite">Default website</label><input id="prefSite" type="url" placeholder="https://example.com">
 <label for="prefStrategy">Default audit device</label><select id="prefStrategy"><option value="mobile">Mobile</option><option value="desktop">Desktop</option></select>
 <button class="btn" id="prefSave">Save preferences</button>
-</div><div class="card"><h2>Data export</h2><p>Download your currently loaded audits, keywords, links, revenue, orders, briefs and comparisons. API keys and login tokens are excluded. Cloud history can be capped; this is not a complete database backup.</p>
+</div><div class="card"><h2>Data export</h2><p>Download your audits, keywords, rank history, links, revenue, orders, briefs and comparisons. Signed-in exports read every page of account records. API keys and login tokens are excluded. Avoid editing records during export.</p>
 <button class="btn secondary" id="backupExport">Export workspace JSON</button>
 <p class="muted">Guest data is never automatically copied to an account on a shared browser. Live tools send URLs and search terms to Google, DuckDuckGo and public fetch proxies. Do not submit confidential URLs.</p></div>
 </section>
@@ -349,7 +349,7 @@
     <label style="font-weight:400"><input type="checkbox" id="notifWeekly" style="width:auto"> Email me a weekly rank summary</label>
     <button class="btn secondary" id="notifSaveBtn">Save notification settings</button>
     <span class="muted" id="notifSaved"></span>
-    <p class="muted">The preference is saved to your account when possible, otherwise in this browser. Weekly mails themselves need a scheduled trigger on the server (see README) — until that is set up, turning this on saves the preference but no mail is sent yet. Rank-change alerts use the same setting.</p>
+    <p class="muted">Sign in to save your preference. Delivery requires a configured email service and schedule; see Workspace settings for availability. Failed saves leave your previous preference unchanged.</p>
   </div>
 </section>
 
@@ -622,7 +622,7 @@
 
 </main>
 <footer>
-  SEOForge v2.6 — by Syeds Enterprises. Signed-in users' data is stored in their Supabase account; logged-out use stays in this browser (localStorage). Integrations: Google Search Console + Analytics (read-only OAuth, tokens in Supabase), PayPal subscriptions (verified by webhook), email alerts (opt-in). Free data sources only: Google PageSpeed Insights, Google Suggest, DuckDuckGo HTML results, public CORS proxies. No backlink index is faked; no search volume is invented.
+  SEOForge v2.8 — by Syeds Enterprises. Signed-in users' data is stored in their Supabase account; logged-out use stays in this browser (localStorage). Integrations: Google Search Console + Analytics (read-only OAuth, tokens in Supabase), PayPal subscriptions (verified by webhook), email alerts (opt-in). Free data sources only: Google PageSpeed Insights, Google Suggest, DuckDuckGo HTML results, public CORS proxies. No backlink index is faked; no search volume is invented.
 </footer>
 </div>
 

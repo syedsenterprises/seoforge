@@ -16,16 +16,20 @@ export async function request(url,options={}){
   if(!res.ok) throw new Error("Upstream request failed ("+res.status+")");
   return data;
 }
+export function serviceKey(){
+  try { const keys=JSON.parse(Deno.env.get("SUPABASE_SECRET_KEYS")||"{}"); if(keys.default) return keys.default; } catch {}
+  return env("SUPABASE_SERVICE_ROLE_KEY");
+}
 export async function db(path,method="GET",body){
   return request(env("SUPABASE_URL")+"/rest/v1/"+path,{
-    method,headers:{apikey:env("SUPABASE_SERVICE_ROLE_KEY"),Authorization:"Bearer "+env("SUPABASE_SERVICE_ROLE_KEY"),"Content-Type":"application/json",Prefer:"return=representation,resolution=merge-duplicates"},
+    method,headers:{apikey:serviceKey(),...(Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")?{Authorization:"Bearer "+Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}:{}),"Content-Type":"application/json",Prefer:"return=representation,resolution=merge-duplicates"},
     ...(body===undefined?{}:{body:JSON.stringify(body)})
   });
 }
 export async function authenticate(req){
   const token=req.headers.get("authorization")||"";
   if(!/^Bearer .+/.test(token)) throw new Error("Authentication required");
-  const user=await request(env("SUPABASE_URL")+"/auth/v1/user",{headers:{Authorization:token,apikey:env("SUPABASE_SERVICE_ROLE_KEY")}});
+  const user=await request(env("SUPABASE_URL")+"/auth/v1/user",{headers:{Authorization:token,apikey:serviceKey()}});
   if(!user.id) throw new Error("Authentication required");
   return user;
 }

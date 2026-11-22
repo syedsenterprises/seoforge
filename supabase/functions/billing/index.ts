@@ -3,7 +3,16 @@ import {env,db,authenticate,body,serve} from "../_shared/http.js";
 import {paypal,verifiedSubscription} from "../_shared/paypal.js";
 serve(async req=>{
   const user=await authenticate(req), input=await body(req);
-  if(input.action==="status"){
+  if(!await db("rpc/claim_api_request","POST",{p_user:user.id,p_action:"billing",p_limit:10})) throw new Error("Too many requests. Try again in one minute.");
+  if(input.action==="refresh"){
+    const rows=await db("billing_subscriptions?user_id=eq."+user.id);
+    if(rows[0]){
+      const subscription=await paypal("/v1/billing/subscriptions/"+rows[0].subscription_id);
+      const plan=verifiedSubscription(subscription,env("PAYPAL_PLAN_ID"),user.id);
+      await db("rpc/apply_billing_event","POST",{p_event_id:"refresh:"+subscription.id+":"+(subscription.update_time||subscription.create_time),p_subscription_id:subscription.id,p_plan:plan,p_status:subscription.status,p_time:subscription.update_time||subscription.create_time});
+    }
+  }
+  if(input.action==="status" || input.action==="refresh"){
     const rows=await db("profiles?select=plan&id=eq."+user.id);
     return {plan:rows[0]?.plan||"free"};
   }

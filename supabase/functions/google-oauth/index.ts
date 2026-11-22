@@ -15,6 +15,7 @@ async function accessToken(uid){
 }
 serve(async req=>{
   const user=await authenticate(req), input=await body(req), action=input.action;
+  if(!await db("rpc/claim_api_request","POST",{p_user:user.id,p_action:"google",p_limit:30})) throw new Error("Too many requests. Try again in one minute.");
   if(action==="status"){
     const rows=await db("google_tokens?select=user_id&user_id=eq."+user.id+"&provider=eq.google");
     return {connected:rows.length>0};

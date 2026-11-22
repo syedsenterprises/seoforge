@@ -24,6 +24,8 @@ const GOOGLE_OAUTH_FN = SUPABASE_URL + "/functions/v1/google-oauth";
 const ALERT_FN = SUPABASE_URL + "/functions/v1/send-alert";
 
 /* Supabase client (guarded: if the CDN fails, the app still works in local mode). */
+const activeRequests = new Set();
+function cancelPendingRequests(){ for(const controller of activeRequests) controller.abort(); activeRequests.clear(); }
 let sb = null, cloudAvailable = false;
 try{
   if(window.supabase && window.supabase.createClient){
@@ -57,6 +59,7 @@ const S = {
 };
 let currentUser = null;   /* Supabase user object when signed in */
 let currentPlan = 'free'; /* 'free' | 'pro' */
+let cloudUsage = null, usageLoading = false;
 let cloudUserId = null;   /* guards against double-loading on auth events */
 
 /* ---------- views ---------- */
@@ -221,8 +224,11 @@ let signInTask = null;
 let signingInId = null;
 async function afterSignIn(user){
   if(!user) return;
+  if(cloudUserId === user.id && currentUser?.id === user.id) return;
+  if(currentUser?.id !== user.id) cancelPendingRequests();
   if(signInTask && signingInId === user.id) return signInTask;
   const generation = ++authGeneration;
+  cloudUsage = null;
   currentUser = user;
   S.mode = "cloud";
   S.cache = { audits:[], keywords:[], links:[], revenue:[], listings:[], orders:[], briefs:[], competitors:[], toolChecks:[] };
@@ -271,7 +277,9 @@ async function doSignIn(){
   if(data.user) await afterSignIn(data.user);
 }
 function clearAuthState(){
+  cancelPendingRequests();
   ++authGeneration; signInTask = null; signingInId = null;
+  cloudUsage = null;
   currentUser = null; currentPlan = "free"; cloudUserId = null; S.mode = "local";
   S.cache = { audits:[], keywords:[], links:[], revenue:[], listings:[], orders:[], briefs:[], competitors:[], toolChecks:[] };
   refreshAuthUI(); showLanding(); renderAll(); loadPreferences();
@@ -311,6 +319,7 @@ async function initAuth(){
 
 /* ---------- free-plan usage ---------- */
 function usageThisMonth(){
+  if(currentUser && cloudUsage) return cloudUsage;
   const m = thisMonthPrefix();
   const auditsUsed = S.get("audits", []).filter(a => (a.date||"").indexOf(m) === 0).length;
   const linksUsed = S.get("links", []).filter(l => (l.date||"").indexOf(m) === 0).length;
@@ -332,6 +341,17 @@ function limitNoteText(){
 function renderLimitNotes(){
   const t = limitNoteText();
   ["auditLimitNote","lvLimitNote","rkLimitNote","blLimitNote","rdLimitNote","scLimitNote","rbLimitNote","smLimitNote","brLimitNote","cpLimitNote","hcLimitNote","bkLimitNote"].forEach(id => { const el = $(id); if(el) el.textContent = t; });
+  if(currentUser && sb && !usageLoading){
+    usageLoading = true;
+    const uid=currentUser.id;
+    sb.rpc("current_usage").then(({data,error})=>{
+      if(!error && data && currentUser?.id===uid){
+        cloudUsage=data;
+        document.querySelectorAll(".limit-note").forEach(el=>el.textContent=limitNoteText());
+        renderPlanCard();
+      }
+    }).catch(()=>{}).finally(()=>{usageLoading=false;});
+  }
 }
 function renderPlanCard(){
   const el = $("planCard"); if(!el) return;
@@ -353,8 +373,9 @@ function renderPlanCard(){
 /* ---------- fetch helpers (honest errors, proxy fallback) ---------- */
 function fetchTimeout(url, ms){
   const c = new AbortController();
+  activeRequests.add(c);
   const t = setTimeout(() => c.abort(), ms);
-  return fetch(url, {signal:c.signal}).finally(() => clearTimeout(t));
+  return fetch(url, {signal:c.signal}).finally(() => { clearTimeout(t); activeRequests.delete(c); });
 }
 const PROXIES = [
   u => "https://api.allorigins.win/raw?url=" + encodeURIComponent(u),
@@ -1213,20 +1234,15 @@ async function loadNotifPref(){
   box.checked = !!val;
 }
 async function saveNotifPref(){
-  const box = $("notifWeekly"); if(!box) return;
-  const val = !!box.checked;
-  let saved = false;
-  if(currentUser && sb){
-    try{
-      const { error } = await sb.from("profiles").update({ weekly_summary: val }).eq("id", currentUser.id);
-      if(!error) saved = true;
-    }catch(e){ saved = false; }
-  }
-  if(!saved) LS.set("notifWeekly", val);
-  $("notifSaved").textContent = saved
-    ? "Saved to your account."
-    : "Saved in this browser (the account column is not set up yet — see README).";
-  setTimeout(() => { $("notifSaved").textContent = ""; }, 4000);
+  const box=$("notifWeekly"),button=$("notifSaveBtn"),out=$("notifSaved");
+  if(!currentUser || !sb){out.textContent="Sign in to save email preferences. Guest mode does not send emails.";return;}
+  button.disabled=true;
+  try {
+    const {error}=await sb.from("profiles").update({weekly_summary:!!box.checked}).eq("id",currentUser.id);
+    if(error) throw error;
+    out.textContent=box.checked?"Weekly summaries enabled for your account when email service is configured.":"Email summaries disabled for your account.";
+  }catch(e){out.textContent="Not saved. Your previous email preference remains active: "+e.message;await loadNotifPref();}
+  finally {button.disabled=false;}
 }
 $("notifSaveBtn").addEventListener("click", saveNotifPref);
 
@@ -1312,6 +1328,7 @@ function downloadCSV(filename, header, rows){
 
 /* ---------- v2.5 free-plan usage ---------- */
 function v25Usage(){
+  if(currentUser && cloudUsage) return cloudUsage;
   const m = thisMonthPrefix();
   const briefsUsed = S.get("briefs", []).filter(b => (b.date||"").indexOf(m)===0).length;
   const compRows = S.get("competitors", []).filter(c => (c.date||"").indexOf(m)===0).length;
@@ -2098,7 +2115,7 @@ function applyPreferences(p){
   document.documentElement.style.setProperty("--teal", p.accent);
   $("workspaceName").textContent = p.brand;
   $("psiStrategy").value = p.strategy;
-  ["auditUrl","serpUrl","hcUrl"].forEach(id => { const el=$(id); if(el && !el.value) el.value=p.defaultSite; });
+  ["auditUrl","serpUrl","hcUrl"].forEach(id => { const el=$(id); if(el && p.defaultSite && (!el.value || el.value===el.dataset.defaultSite || el.value===el.defaultValue)){el.value=p.defaultSite;el.dataset.defaultSite=p.defaultSite;} });
 }
 $("prefSave").addEventListener("click", () => {
   try {
@@ -2108,11 +2125,34 @@ $("prefSave").addEventListener("click", () => {
   } catch(e){ showBanner(e.message,"warn"); }
 });
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change",()=>applyPreferences(SEOForgeCore.validatePreferences(LS.get("preferences",{}))));
-$("backupExport").addEventListener("click",()=>{
+async function collectAccountExport(){
+  const uid=currentUser?.id;
+  const generation=authGeneration;
+  if(!uid) return Object.fromEntries(Object.keys(S.cache).map(k=>[k,S.get(k,[])]));
   const data={};
-  Object.keys(S.cache).forEach(k=>{ data[k]=S.get(k,[]); });
-  downloadFile("seoforge-backup-"+todayISO()+".json",JSON.stringify({version:1,exportedAt:new Date().toISOString(),mode:S.mode,data},null,2),"application/json");
-  showBanner("Backup exported. API keys and authentication tokens are excluded. Cloud exports contain the loaded history, which may be capped.", "ok");
+  for(const table of ["audits","keywords","rank_checks","verified_links","revenue_entries","listings","orders","content_briefs","competitors","site_checks"]){
+    data[table]=[];
+    for(let offset=0;;offset+=500){
+      if(generation!==authGeneration || currentUser?.id!==uid) throw new Error("Account changed. Export cancelled.");
+      const {data:rows,error}=await sb.from(table).select("*").eq("user_id",uid).order("id").range(offset,offset+499);
+      if(error) throw new Error("Export failed for "+table+": "+error.message);
+      data[table].push(...(rows||[]));
+      if((rows||[]).length<500) break;
+      if(offset>=99500) throw new Error("This account exceeds the browser export limit. Contact support for a database export.");
+    }
+  }
+  if(generation!==authGeneration || currentUser?.id!==uid) throw new Error("Account changed. Export cancelled.");
+  return data;
+}
+$("backupExport").addEventListener("click",async()=>{
+  const button=$("backupExport"); button.disabled=true;
+  try {
+    const mode=S.mode;
+    const data=await collectAccountExport();
+    downloadFile("seoforge-backup-"+todayISO()+".json",JSON.stringify({version:2,exportedAt:new Date().toISOString(),mode,data},null,2),"application/json");
+    showBanner("Export complete. API keys and authentication tokens are excluded.", "ok");
+  } catch(e){ showBanner(e.message,"warn"); }
+  finally {button.disabled=false;}
 });
 $("forgotPassword").addEventListener("click",async()=>{
   if(!sb){ showAuthMsg("Cloud authentication is unavailable."); return; }
@@ -2138,6 +2178,30 @@ $("recoverySave").addEventListener("click",async()=>{
   finally { $("recoverySave").disabled=false; }
 });
 loadPreferences();
+
+
+async function loadCapabilities(){
+  const out=$("integrationReadiness");
+  try {
+    const response=await fetchTimeout(SUPABASE_URL+"/functions/v1/status",10000);
+    if(!response.ok) throw new Error("Status unavailable");
+    const status=await response.json();
+    out.textContent="Google reports: "+(status.google?"configured":"awaiting setup")+" · Paid checkout: "+(status.billing?"enabled":"not enabled")+" · Email: "+(status.email&&status.emailScheduled?"scheduled":status.email?"configured; schedule pending":"awaiting setup");
+  }catch {out.textContent="Integration status unavailable. Core tools remain available.";}
+}
+$("integrationRefresh").addEventListener("click",loadCapabilities);
+$("billingRefresh").addEventListener("click",async()=>{
+  if(!currentUser){focusAuth();showAuthMsg("Sign in to refresh billing.");return;}
+  const uid=currentUser.id;
+  try {
+    const token=await supabaseAccessToken();
+    const response=await fetchJsonTimeout(SUPABASE_URL+"/functions/v1/billing",30000,{method:"POST",headers:{Authorization:"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify({action:"refresh"})});
+    const data=await response.json(); if(!response.ok) throw new Error(data.error||"Billing refresh failed");
+    if(currentUser?.id!==uid) return;
+    currentPlan=data.plan; refreshAuthUI();renderPlanCard();renderLimitNotes();showBanner("Billing status refreshed.","ok");
+  }catch(e){showBanner(e.message,"warn");}
+});
+loadCapabilities();
 
 /* ---------- init ---------- */
 function renderAll(){
