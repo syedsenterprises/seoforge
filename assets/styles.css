@@ -116,3 +116,6 @@ html[data-theme=dark] th{background:#334155}
 html[data-density=compact] .card{padding:10px;margin-bottom:8px}
 html[data-density=compact] td,html[data-density=compact] th{padding:6px}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
+
+html[data-theme=dark] .feature,html[data-theme=dark] .price-card,html[data-theme=dark] .listing,html[data-theme=dark] .soc-card{background:var(--card);color:var(--ink)}
+#recoveryPanel{max-width:920px;margin:16px auto}

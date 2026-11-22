@@ -30,7 +30,8 @@ serve(async req=>{
       throw new Error("Your subscription is awaiting activation");
     }
   }
-  const result=await paypal("/v1/billing/subscriptions","POST",{plan_id:env("PAYPAL_PLAN_ID"),custom_id:user.id,application_context:{brand_name:"SEOForge",user_action:"SUBSCRIBE_NOW",return_url:env("GOOGLE_REDIRECT_URI"),cancel_url:env("GOOGLE_REDIRECT_URI")}},user.id);
+  const attempt=await db("rpc/checkout_attempt","POST",{p_user:user.id,p_previous:existing[0]?.subscription_id||null});
+  const result=await paypal("/v1/billing/subscriptions","POST",{plan_id:env("PAYPAL_PLAN_ID"),custom_id:user.id,application_context:{brand_name:"SEOForge",user_action:"SUBSCRIBE_NOW",return_url:env("GOOGLE_REDIRECT_URI"),cancel_url:env("GOOGLE_REDIRECT_URI")}},attempt);
   // Unique user_id prevents simultaneous checkout requests from binding multiple subscriptions.
   await db("billing_subscriptions?on_conflict=user_id","POST",{user_id:user.id,subscription_id:result.id,status:result.status});
   const url=result.links?.find(l=>l.rel==="approve")?.href;

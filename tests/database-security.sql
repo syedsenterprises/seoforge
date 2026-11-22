@@ -44,6 +44,33 @@ begin
    if sqlerrm not like 'Free monthly limit reached%' then raise; end if;
  end;
 end $$;
+
+do $$
+declare i int; saved uuid;
+begin
+ -- A caller cannot bypass link accounting through the raw table.
+ begin
+  insert into public.verified_links(user_id,page_url,target_domain,checked_at) values(auth.uid(),'https://example.invalid','target.invalid',now());
+  raise exception 'FAIL: direct link inserts allowed';
+ exception when insufficient_privilege then null;
+ end;
+ for i in 1..5 loop
+  saved:=public.save_link_observation('https://example.invalid/'||i,'target.invalid','[{"anchor":"a","rel":""},{"anchor":"b","rel":"nofollow"}]'::jsonb);
+ end loop;
+ if (public.current_usage()->>'linksUsed')::int<>5 then raise exception 'FAIL: anchors counted as separate observations'; end if;
+ begin
+  perform public.save_link_observation('https://example.invalid/6','target.invalid','[]'::jsonb);
+  raise exception 'FAIL: link quota bypassed';
+ exception when raise_exception then
+  if sqlerrm not like 'Free monthly limit reached%' then raise; end if;
+ end;
+ begin
+  insert into public.audits(id,user_id,url) values(gen_random_uuid(),auth.uid(),'https://example.invalid/replay');
+  raise exception 'FAIL: client supplied ID bypassed quota';
+ exception when raise_exception then
+  if sqlerrm not like 'Free monthly limit reached%' then raise; end if;
+ end;
+end $$;
 reset role;
 set local role service_role;
 do $$
@@ -53,6 +80,15 @@ begin
   allowed:=public.claim_api_request(current_setting('seoforge.test_a')::uuid,'billing',10);
   if allowed<>(i<=10) then raise exception 'FAIL: API rate limit'; end if;
  end loop;
+end $$;
+
+do $$
+declare first_id uuid; retry_id uuid; replacement_id uuid; uid uuid:=current_setting('seoforge.test_a')::uuid;
+begin
+ first_id:=public.checkout_attempt(uid,null);
+ retry_id:=public.checkout_attempt(uid,null);
+ replacement_id:=public.checkout_attempt(uid,'I-TERMINAL');
+ if first_id<>retry_id or first_id=replacement_id then raise exception 'FAIL: checkout idempotency lifecycle'; end if;
 end $$;
 reset role;
 rollback;

@@ -87,3 +87,13 @@ test("Cloud export aborts after a database error instead of downloading partial 
   a.run('currentUser={id:"alice"};sb=mockDb;');
   await assert.rejects(a.run("collectAccountExport()"),/Export failed/);
 });
+
+test("Failed comparison persistence keeps the result and shows an unsaved warning",async()=>{
+  const a=app();
+  a.elements.get("cpA").value="https://a.example";
+  a.elements.get("cpB").value="https://b.example";
+  a.run('runPSI=async()=>({score:70});fetchPageDoc=async()=>{throw Error("offline");};recordCompetitors=async()=>{throw Error("database unavailable");};');
+  await a.run("runCompare()");
+  assert.match(a.elements.get("cpOut").innerHTML,/Comparison not saved/);
+  assert.match(a.elements.get("cpOut").innerHTML,/<table>/);
+});

@@ -202,7 +202,7 @@ function groupVerifiedRows(rows){
   const map = new Map();
   rows.forEach(r => {
     const d = (r.checked_at||"").slice(0,10);
-    const key = r.page_url + "|" + r.target_domain + "|" + (r.checked_at||"");
+    const key = r.observation_id || (r.page_url + "|" + r.target_domain + "|" + (r.checked_at||""));
     if(!map.has(key)) map.set(key, { date:d, page:r.page_url, domain:r.target_domain, hits:[] });
     map.get(key).hits.push(r);
   });
@@ -800,14 +800,15 @@ async function runLinkVerify(){
     if(!hits.length){
       out.innerHTML = '<div class="warn"><b>No link found.</b> The page ' + esc(page) + ' contains no link to ' + esc(domain) + ' (checked ' + anchors.length + ' links on the page). The link may not exist, or the page may load links with JavaScript, which this checker cannot see.</div>';
       if(S.mode==='cloud'){
-        const { error } = await sb.from("verified_links").insert({ user_id:currentUser.id, page_url:page, target_domain:domain, anchor:null, rel:null, found:false, checked_at:checkedAt });
+        const { error } = await sb.rpc("save_link_observation",{p_page:page,p_domain:domain,p_hits:[]});
         if(error){ out.innerHTML += '<div class="warn">Saving this check to your account failed: ' + esc(error.message) + '</div>'; }
         else{
           const saved = S.get("links", []);
           saved.unshift({ date:todayISO(), page, domain, count:0, types:"No link found" });
           S.cache.links = saved.slice(0,50);
         }
-      }
+      }else{ LS.set("links",[{date:todayISO(),page,domain,count:0,types:"No link found"}].concat(LS.get("links",[])).slice(0,50)); }
+      renderLinkHistory(); renderDashboard(); renderLimitNotes();
     }else{
       const rows = hits.map(h => {
         const c = classifyRel(h.rel);
@@ -818,7 +819,7 @@ async function runLinkVerify(){
         + '<p class="muted">Paid/sponsored links should be rel="sponsored" (or nofollow). A paid link showing as Dofollow needs fixing.</p>';
       const types = [...new Set(hits.map(h => classifyRel(h.rel).label))].join(", ");
       if(S.mode==='cloud'){
-        const { error } = await sb.from("verified_links").insert(hits.map(h => ({ user_id:currentUser.id, page_url:page, target_domain:domain, anchor:h.anchor, rel:h.rel||null, found:true, checked_at:checkedAt })));
+        const { error } = await sb.rpc("save_link_observation",{p_page:page,p_domain:domain,p_hits:hits.map(h=>({anchor:h.anchor,rel:h.rel||null}))});
         if(error){ out.innerHTML += '<div class="warn">Saving this check to your account failed: ' + esc(error.message) + '</div>'; }
         else{
           const saved = S.get("links", []);
@@ -1867,8 +1868,12 @@ async function runCompare(){
     + '<tr><td><b>Word count</b></td><td>' + cell(rows[0],'words') + '</td><td>' + cell(rows[1],'words') + '</td></tr>'
     + '</table></div><p class="muted">PageSpeed scores come from Google; the on-page numbers come from reading each page live. Word counts are estimates from visible text.</p>';
   prog.textContent = "";
-  await recordCompetitors([aUrl, bUrl]);
-  renderCompetitors(); renderLimitNotes();
+  try {
+    await recordCompetitors([aUrl, bUrl]);
+    renderCompetitors(); renderLimitNotes();
+  } catch(e) {
+    out.innerHTML += '<div class="warn" role="alert"><b>Comparison not saved.</b> ' + esc(e.message) + ' The results above are available to copy, but will not survive a reload.</div>';
+  }
 }
 async function recordCompetitors(urls){
   if(S.mode === "cloud"){

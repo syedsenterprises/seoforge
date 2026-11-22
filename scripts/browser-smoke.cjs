@@ -22,7 +22,7 @@ const path = require("node:path");
   await fs.mkdir("test-results",{recursive:true});
   try {
     for(const viewport of [{width:1440,height:1000},{width:390,height:844}]){
-      const context=await browser.newContext({viewport,acceptDownloads:true});
+      const context=await browser.newContext({viewport,acceptDownloads:true,colorScheme:"dark"});
       const page=await context.newPage();
       const errors=[]; page.on("pageerror",e=>errors.push(e.message));
       await page.route("**/*",route=>{
@@ -32,6 +32,8 @@ const path = require("node:path");
         return route.abort();
       });
       await page.goto(base,{waitUntil:"networkidle"});
+      assert.equal(await page.locator(".feature").first().evaluate(el=>getComputedStyle(el).backgroundColor),"rgb(30, 41, 59)");
+      assert.equal(await page.locator(".price-card").first().evaluate(el=>getComputedStyle(el).backgroundColor),"rgb(30, 41, 59)");
       await page.locator("#landingLaunchBtn").click();
       assert.ok(await page.locator("#appView").isVisible());
       const tabs=await page.locator("#tabs button[data-tab]").all();
@@ -78,5 +80,16 @@ const path = require("node:path");
       await context.close();
       console.log("PASS browser flows at "+viewport.width+"px: all tools, persisted customization, rank/revenue CRUD, export, forged billing return");
     }
+    const recovery=await browser.newPage();
+    await recovery.route("**/*",route=>{
+      const url=route.request().url();
+      if(url.startsWith(base)) return route.continue();
+      if(url.includes("supabase-js")) return route.fulfill({contentType:"text/javascript",body:'window.supabase={createClient:()=>({auth:{getSession:async()=>({data:{session:null}}),onAuthStateChange:cb=>setTimeout(()=>cb("PASSWORD_RECOVERY",null),10)}})};'});
+      return route.abort();
+    });
+    await recovery.goto(base,{waitUntil:"networkidle"});
+    assert.ok(await recovery.locator("#recoveryPassword").isVisible(),"Recovery password input must remain visible after showApp");
+    await recovery.close();
+    console.log("PASS recovery callback exposes the password form");
   } finally {await browser.close();await new Promise(resolve=>server.close(resolve));}
 })().catch(e=>{console.error(e);process.exitCode=1;});

@@ -33,7 +33,7 @@ Marketplace records are not a public marketplace or order fulfillment system. Ad
 - Database quotas serialize per user and retain usage after audit history is deleted.
 - Parent ownership is checked for rank checks and orders.
 
-Quotas apply to stored observations, not public client-side requests. Link observations group anchors by timestamp; comparisons store two rows. Cached UI usage may lag the database ledger after deletions; server errors remain authoritative.
+Quotas apply to stored observations, not public client-side requests. Link observations group anchors by server-generated IDs; comparisons store two rows. Cached UI usage may lag the database ledger after deletions; server errors remain authoritative.
 
 ## Layout
 
