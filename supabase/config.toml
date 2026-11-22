@@ -1,0 +1,13 @@
+project_id = "seoforge"
+
+[functions.google-oauth]
+verify_jwt = false
+
+[functions.billing]
+verify_jwt = false
+
+[functions.paypal-webhook]
+verify_jwt = false
+
+[functions.send-alert]
+verify_jwt = false
