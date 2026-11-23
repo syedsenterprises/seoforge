@@ -149,3 +149,22 @@ test("SEOForge Speed Score: compression that cannot be verified scores half, not
   assert.equal(sf.score,62);
   assert.equal(sf.grade,"Needs work");
 });
+
+test("Forge Assistant keyless mode: answers data questions without a key",()=>{
+  const a=app();
+  a.run('LS.set("audits",[{url:"https://example.com",psi:87,ok:50,total:50}]); LS.set("keywords",[{keyword:"seo tools",url:"",checks:[]},{keyword:"ai directory",url:"",checks:[]}]); LS.set("rankChecks",[{id:"1"}]); LS.set("links",[{id:"1"},{id:"2"}]);');
+  assert.match(a.run('agentLocalAnswer("what is my latest audit score?")'),/87\/100/);
+  assert.match(a.run('agentLocalAnswer("what is my latest audit score?")'),/example\.com/);
+  assert.match(a.run('agentLocalAnswer("how many keywords am I tracking?")'),/2 keywords/);
+  assert.match(a.run('agentLocalAnswer("how many keywords am I tracking?")'),/seo tools/);
+  assert.match(a.run('agentLocalAnswer("how many links have I verified?")'),/2 verified links/);
+  assert.match(a.run('agentLocalAnswer("what is my plan?")'),/free plan/);
+  assert.match(a.run('agentLocalAnswer("what is my speed score?")'),/isn't saved/);
+  assert.match(a.run('agentLocalAnswer("help")'),/No key needed/);
+  assert.equal(a.run('agentLocalAnswer("how do I fix my title tag?")'),null);
+});
+test("Forge Assistant keyless mode: no saved data says so plainly",()=>{
+  const a=app();
+  assert.match(a.run('agentLocalAnswer("what is my latest audit score?")'),/no saved audits/);
+  assert.match(a.run('agentLocalAnswer("how many keywords?")'),/not tracking any keywords/);
+});
