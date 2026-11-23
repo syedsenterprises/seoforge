@@ -149,6 +149,7 @@ test("Admin stats: owner call works with the platform sb_secret_ key (no Bearer 
      platform-provided SUPABASE_SECRET_KEYS set (no legacy service-role key)
      and asserts no /rest/v1/ request carries an Authorization header. */
   const restAuth=[];
+  const restUrls=[];
   const fetchMock=async(url,options)=>{
     const auth=(options&&options.headers&&options.headers.Authorization)||"";
     if(String(url).includes("/auth/v1/user")){
@@ -157,6 +158,7 @@ test("Admin stats: owner call works with the platform sb_secret_ key (no Bearer 
     }
     if(String(url).includes("/rest/v1/")){
       restAuth.push(auth);
+      restUrls.push(String(url));
       assert.equal((options.headers||{}).apikey,"sb_secret_test","secret key must travel as apikey");
       const u=String(url);
       const total=u.includes("plan=eq.pro")||u.includes("plan=eq.agency")||u.includes("plan=eq.business")?"0-0/0":u.includes("created_at=gte")?"0-0/0":u.includes("/audits")?"0-0/0":u.includes("status=eq.ACTIVE")?"0-0/0":"0-0/1";
@@ -182,6 +184,12 @@ test("Admin stats: owner call works with the platform sb_secret_ key (no Bearer 
   assert.equal(data.subscription,null);
   assert.ok(restAuth.length>0,"the counts must actually hit PostgREST");
   assert.ok(restAuth.every(a=>!a),"no PostgREST call may carry an Authorization header, got "+JSON.stringify(restAuth));
+  /* Regression (live 23–24 Nov 2026): countRows() selected `id`, but
+     billing_subscriptions has no `id` column (keyed by user_id), so
+     PostgREST 400d the paying-users count and the whole panel failed. */
+  assert.ok(restUrls.length>0,"the counts must actually hit PostgREST");
+  assert.ok(restUrls.filter(u=>u.includes("select=")).every(u=>u.includes("select=*")),"every count query must select *, got "+JSON.stringify(restUrls));
+  assert.ok(!restUrls.some(u=>u.includes("select=id")),"no count may select a named id column, got "+JSON.stringify(restUrls));
 });
 
 /* ---------- v2.11.0 round 3: fetch-proxy / ai-agent SSRF + redirect fixes ---------- */
