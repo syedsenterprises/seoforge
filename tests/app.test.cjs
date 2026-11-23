@@ -44,6 +44,11 @@ function bingU(real){
 function bingHtml(items){
   return items.map(([u,t])=>'<li class="b_algo"><h2><a target="_blank" href="https://www.bing.com/ck/a?!&&p=abc&u='+bingU(u)+'&ntb=1">'+t+'</a></h2><cite>'+u.replace("https://","")+' › page</cite></li>').join("");
 }
+/* Real Bing HTML, as served live 24 Nov 2026: hrefs carry &amp; entities and
+   the <cite> display text INCLUDES the scheme ("https://host › path"). */
+function bingHtmlAmp(items){
+  return items.map(([u,t])=>'<li class="b_algo"><h2><a target="_blank" href="https://www.bing.com/ck/a?!&amp;&amp;p=abc&amp;u='+bingU(u)+'&amp;ntb=1">'+t+'</a></h2><cite>'+u+' › page</cite></li>').join("");
+}
 test("Application starts without cloud CDN and all static element IDs exist",()=>{
   const a=app();assert.match(a.elements.get("authMsg").textContent,/unavailable/);
 });
@@ -267,22 +272,90 @@ test("SERP: DuckDuckGo parser reads a.result__a links via uddg",()=>{
 });
 test("SERP: serpTopResults tries Bing first and falls back to DuckDuckGo",async()=>{
   const a=app();
-  const bing=bingHtml([["https://example.com/one","One"]]);
-  const ddg='<a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fddg.example.com%2Fpage">DDG Page</a>';
+  const bing=bingHtml([["https://example.com/ai-tools-one","AI tools one"]]);
+  const ddg='<a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fddg.example.com%2Fai-tools-page">DDG AI tools page</a>';
   a.context.__bing=bing; a.context.__ddg=ddg;
   a.run('fetchViaProxy=async(u)=> u.includes("bing.com") ? {text:__bing} : {text:__ddg};');
   const first=await a.run('serpTopResults("ai tools", 5)');
-  assert.equal(first[0].url,"https://example.com/one");
+  assert.equal(first[0].url,"https://example.com/ai-tools-one");
   a.run('fetchViaProxy=async(u)=> u.includes("bing.com") ? {text:"<html>no results here</html>"} : {text:__ddg};');
   const second=await a.run('serpTopResults("ai tools", 5)');
-  assert.equal(second[0].url,"https://ddg.example.com/page");
+  assert.equal(second[0].url,"https://ddg.example.com/ai-tools-page");
   a.run('fetchViaProxy=async()=>({text:"<html>nothing</html>"});');
   await assert.rejects(a.run('serpTopResults("ai tools", 5)'),/blocked|parsed/);
+});
+test("SERP: Bing u= decoder handles &amp; entities in raw Bing HTML",()=>{
+  const a=app();
+  const href='https://www.bing.com/ck/a?!&amp;&amp;p=x&amp;u='+bingU("https://builtin.com/artificial-intelligence/ai-tools")+'&amp;ntb=1';
+  assert.equal(a.run('decodeBingUrl("'+href+'")'),"https://builtin.com/artificial-intelligence/ai-tools");
+  /* A direct (non-Bing) href with an entity-escaped query still passes through. */
+  assert.equal(a.run('decodeBingUrl("https://example.com/page?a=1&amp;b=2")'),"https://example.com/page?a=1&b=2");
+});
+test("SERP: Bing parser with &amp; hrefs and scheme-including cites returns clean single-scheme URLs",()=>{
+  const a=app();
+  const sample=bingHtmlAmp([["https://www.marketermilk.com/blog/best-seo-tools","25 Best SEO Tools"],["https://www.capterra.com/seo-software/","Best SEO Software"]]);
+  a.context.__bing=sample;
+  const out=a.run("parseBingResults(__bing, 5)");
+  assert.equal(out.length,2);
+  assert.equal(out[0].url,"https://www.marketermilk.com/blog/best-seo-tools");
+  assert.equal(out[1].url,"https://www.capterra.com/seo-software/");
+  assert.ok(out.every(r=>!r.url.includes("https://https://")));
+});
+test("SERP: cite fallback strips an existing scheme and rejects a truncated cite",()=>{
+  const a=app();
+  const withScheme='<li class="b_algo"><h2><a href="https://www.bing.com/ck/a?u=garbage">No u</a></h2><cite>https://fallback.example › deep › page</cite></li>';
+  a.context.__bing=withScheme;
+  const out=a.run("parseBingResults(__bing, 5)");
+  assert.equal(out.length,1);
+  assert.equal(out[0].url,"https://fallback.example/deep/page");
+  const truncated='<li class="b_algo"><h2><a href="https://www.bing.com/ck/a?u=garbage">No u</a></h2><cite>https://truncated.example › MicroSiteTemplat…</cite></li>';
+  a.context.__bing2=truncated;
+  const out2=a.run("parseBingResults(__bing2, 5)");
+  assert.equal(out2.length,0);
+});
+test("SERP: serpTopResults rejects results that do not relate to the keyword (Bing trending fallback)",async()=>{
+  const a=app();
+  /* The exact live case 24 Nov 2026: q=SEOForge returned Hyundai pages. */
+  const bing=bingHtmlAmp([["https://www.hyundaiusa.com/us/en/vehicles/tucson","2026 Tucson | Compact SUV, Vehicle Overview | Hyundai USA"],["https://autoservice.hyundaiusa.com","Hyundai"],["https://www.hyundaiusa.com/us/en/vehicles/tucson/xrt","2026 Tucson XRT | Features & Options - Hyundai USA"]]);
+  a.context.__bing=bing;
+  a.run('fetchViaProxy=async()=>({text:__bing});');
+  await assert.rejects(a.run('serpTopResults("SEOForge", 5)'),/No verifiable ranking data for "SEOForge"/);
+});
+test("SERP: serpTopResults returns real results for a matching keyword",async()=>{
+  const a=app();
+  const bing=bingHtmlAmp([["https://www.marketermilk.com/blog/best-seo-tools","25 Best SEO Tools"],["https://www.capterra.com/seo-software/","Best SEO Software"],["https://morningscore.io/best-seo-tools","The 20 Best SEO Tools"]]);
+  a.context.__bing=bing;
+  a.run('fetchViaProxy=async()=>({text:__bing});');
+  const out=await a.run('serpTopResults("best seo tools", 5)');
+  assert.equal(out.length,3);
+  assert.equal(out[0].url,"https://www.marketermilk.com/blog/best-seo-tools");
+  assert.ok(out.every(r=>!r.url.includes("https://https://")));
+});
+test("SERP: relevance guard needs a significant keyword token, not a stopword",()=>{
+  const a=app();
+  /* "best" alone is a stopword: no significant token -> guard does not fire. */
+  assert.equal(a.run('serpResultsMatchKeyword([{url:"https://example.com/x",title:"Anything"}], "best")'),true);
+  assert.equal(a.run('serpKeywordTokens("best seo tools")').join(","),"seo,tools");
+  assert.equal(a.run('serpResultsMatchKeyword([{url:"https://www.hyundaiusa.com/us/en/vehicles/tucson",title:"2026 Tucson"}], "SEOForge")'),false);
+  assert.equal(a.run('serpResultsMatchKeyword([{url:"https://seoforge.syedsenterprises.org/",title:"SEOForge"}], "SEOForge")'),true);
+});
+test("Rank Tracker: a trending-fallback result never becomes a recorded lost rank",async()=>{
+  const a=app();
+  a.context.DOMParser=class{parseFromString(){return{querySelectorAll:()=>[]};}};
+  const bing=bingHtmlAmp([["https://www.hyundaiusa.com/us/en/vehicles/tucson","2026 Tucson | Compact SUV, Vehicle Overview | Hyundai USA"]]);
+  a.context.__bing=bing;
+  a.run('fetchViaProxy=async()=>({text:__bing}); LS.set("keywords",[{keyword:"SEOForge",url:"https://seoforge.syedsenterprises.org",checks:[]}]);');
+  const btn={disabled:false,textContent:"",title:""};
+  a.context.__btn=btn;
+  await a.run('checkRank(0,__btn)');
+  assert.equal(a.run('LS.get("keywords",[])[0].checks.length'),0);
+  assert.equal(btn.textContent,"Failed — retry");
+  assert.match(btn.title,/No verifiable ranking data/);
 });
 test("Briefs: the brief path runs through serpTopResults (Bing) and never shows a SERP title as page data",async()=>{
   const a=app();
   a.elements.set("brTxtBtn",a.elements.get("brBtn"));
-  const bing=bingHtml([["https://example.com/one","One"],["https://example.com/two","Two"],["https://example.com/three","Three"],["https://example.com/four","Four"],["https://example.com/five","Five"]]);
+  const bing=bingHtml([["https://example.com/ai-tools-one","AI tools one"],["https://example.com/ai-tools-two","AI tools two"],["https://example.com/ai-tools-three","AI tools three"],["https://example.com/ai-tools-four","AI tools four"],["https://example.com/ai-tools-five","AI tools five"]]);
   a.context.__bing=bing;
   a.run('fetchViaProxy=async()=>({text:__bing}); fetchPageDoc=async()=>{throw Error("blocked");}; suggestOne=async()=>[];');
   a.elements.get("brKw").value="ai tools";
@@ -290,6 +363,20 @@ test("Briefs: the brief path runs through serpTopResults (Bing) and never shows 
   const out=a.elements.get("brOut").innerHTML;
   assert.match(out,/could not read/);
   assert.doesNotMatch(out,/DuckDuckGo/);
+});
+test("Briefs: an empty brief (all pages unreadable) is not saved",async()=>{
+  const a=app();
+  a.elements.set("brTxtBtn",a.elements.get("brBtn"));
+  const bing=bingHtml([["https://example.com/ai-tools-one","AI tools one"],["https://example.com/ai-tools-two","AI tools two"],["https://example.com/ai-tools-three","AI tools three"],["https://example.com/ai-tools-four","AI tools four"],["https://example.com/ai-tools-five","AI tools five"]]);
+  a.context.__bing=bing;
+  a.run('fetchViaProxy=async()=>({text:__bing}); fetchPageDoc=async()=>{throw Error("blocked");}; suggestOne=async()=>[];');
+  a.elements.get("brKw").value="ai tools";
+  await a.run("runBrief()");
+  const out=a.elements.get("brOut").innerHTML;
+  assert.match(out,/could not read/);
+  assert.match(out,/Nothing was saved/);
+  assert.doesNotMatch(out,/Saved to your briefs/);
+  assert.equal(a.run('LS.get("briefs", []).length'),0);
 });
 
 /* ---------- v2.10.0: fetch-proxy 403/429 fallthrough ---------- */
