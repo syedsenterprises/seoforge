@@ -11,6 +11,12 @@ const PLAN_LIMITS = { auditsPerMonth: 5, keywordsTotal: 10, linkChecksPerMonth: 
    package.json and supabase/functions/status/index.ts must carry the same value
    (enforced by tests/app.test.cjs). */
 const APP_VERSION = "2.10.0";
+/* Owner admin (v2.10.0): the owner's own account has no limits. This is the
+   same client-side limit model the app already uses — the limits are UI
+   guards, not server enforcement; the server still validates plan on
+   billing. The email is already public as the contact address. */
+const OWNER_EMAIL = "syedsinterprises@gmail.com";
+function isAdmin(){ return !!(currentUser && currentUser.email && String(currentUser.email).toLowerCase() === OWNER_EMAIL); }
 
 /* ================= v2.6 integrations ================= */
 /* Google OAuth (Search Console + Analytics, read-only).
@@ -132,11 +138,13 @@ function focusAuth(){ showAuthView("signin"); const el = $("authEmail"); if(el) 
 function showAuthMsg(msg){ $("authMsg").textContent = msg; }
 
 /* ---------- tabs ---------- */
-const VALID_TABS = ["dashboard","audit","health","bulk","keywords","rank","compete","links","broken","redirect","brief","serp","schema","robots","gsc","ads","market","estimator","preferences"];
+const VALID_TABS = ["dashboard","audit","health","bulk","keywords","rank","compete","links","broken","redirect","brief","serp","schema","robots","gsc","ads","market","estimator","preferences","admin"];
 /* Deep links: #tab=rank opens the Rank Tracker, etc. Returns "" for anything else. */
 function parseTabHash(hash){
   const m = String(hash||"").match(/#tab=([a-z]+)/);
-  return m && VALID_TABS.includes(m[1]) ? m[1] : "";
+  if(!m || !VALID_TABS.includes(m[1])) return "";
+  if(m[1]==="admin" && !isAdmin()) return ""; /* non-owners fall back to dashboard */
+  return m[1];
 }
 /* Parse an auth intent from the hash, e.g. #auth=signup from the landing page. */
 function parseAuthHash(hash){
@@ -168,6 +176,7 @@ function showTab(name, push){
   if(name==="ads"){ renderRevenue(); }
   if(name==="preferences"){ loadSettings(); renderLimitNotes(); }
   if(name==="market") renderMarket();
+  if(name==="admin"){ renderAdmin(); }
   if(name==="gsc"){ renderGoogleStatus(); }
   if(name==="brief"){ renderBriefs(); renderLimitNotes(); }
   if(name==="compete"){ renderCompetitors(); renderLimitNotes(); }
@@ -247,13 +256,92 @@ function refreshAuthUI(){
   $("authLoggedOut").hidden = !!currentUser;
   $("authLoggedIn").hidden = !currentUser;
   applyVersionLabels();
-  $("upgradeBtn").style.display = currentPlan === 'pro' ? 'none' : '';
+  $("upgradeBtn").style.display = (currentPlan === 'pro' || isAdmin()) ? 'none' : '';
   if(currentUser){
     $("authUserEmail").textContent = currentUser.email || "";
     const pill = $("planPill");
-    pill.textContent = currentPlan === 'pro' ? 'Pro' : 'Free';
-    pill.classList.toggle('pro', currentPlan === 'pro');
+    pill.textContent = isAdmin() ? 'Admin' : currentPlan === 'pro' ? 'Pro' : 'Free';
+    pill.classList.toggle('pro', isAdmin() || currentPlan === 'pro');
   }
+  renderAdminSection();
+}
+/* ---------- owner admin dashboard (v2.10.0) ---------- */
+const ADMIN_STATS_FN = SUPABASE_URL + "/functions/v1/admin-stats";
+let adminSectionEl = null, adminPanelEl = null;
+/* The Admin sidebar section + tab panel are created ONLY for the owner and
+   removed for everyone else — they do not exist in the DOM for non-owners.
+   Called from refreshAuthUI on every auth change. */
+function renderAdminSection(){
+  if(adminSectionEl){ try{ adminSectionEl.remove(); }catch(e){} adminSectionEl = null; }
+  if(adminPanelEl){ try{ adminPanelEl.remove(); }catch(e){} adminPanelEl = null; }
+  if(!isAdmin()) return;
+  const nav = $("sidebarNav"), main = $("appMain");
+  if(!nav || !main) return;
+  adminSectionEl = document.createElement("div");
+  adminSectionEl.className = "side-group";
+  adminSectionEl.id = "adminSection";
+  adminSectionEl.innerHTML = '<span class="side-group-label">Admin</span><button type="button" data-tab="admin"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 5-3.5 8-7 9-3.5-1-7-4-7-9V6z"/></svg>Admin dashboard</button>';
+  const btn = adminSectionEl.querySelector("button");
+  if(btn) btn.addEventListener("click", () => { showTab("admin", true); document.body.classList.remove("nav-open"); });
+  nav.appendChild(adminSectionEl);
+  adminPanelEl = document.createElement("section");
+  adminPanelEl.className = "tab";
+  adminPanelEl.id = "tab-admin";
+  adminPanelEl.innerHTML = '<div class="card"><h2>Admin dashboard</h2><p class="muted">Owner only — your account, platform health and user counts. No other user\u2019s private data is shown here.</p><div id="adminOut"><p class="muted">Loading…</p></div></div>';
+  main.appendChild(adminPanelEl);
+}
+/* Admin dashboard contents — all from the owner's own data + public endpoints.
+   User counts come from the server-gated admin-stats function; if it does not
+   answer, the rest still renders with an honest "unavailable" line. */
+async function renderAdmin(){
+  const panel = adminPanelEl;
+  if(!panel || !isAdmin()) return;
+  const audits = S.get("audits", []), kws = S.get("keywords", []), links = S.get("links", []),
+    rev = S.get("revenue", []), orders = S.get("orders", []), briefs = S.get("briefs", []),
+    comps = S.get("competitors", []);
+  const revTotal = rev.reduce((a,r)=>a+(+r.amount||0),0);
+  let healthHtml = '<p class="muted">Platform health unavailable — the status endpoint did not answer.</p>';
+  try{
+    const res = await fetchTimeout(SUPABASE_URL + "/functions/v1/status", 15000);
+    if(res.ok){
+      const s = await res.json();
+      const row = (k,v) => '<li>' + esc(k) + ': <b>' + (v===true ? 'yes' : v===false ? 'no' : esc(String(v==null?"—":v))) + '</b></li>';
+      healthHtml = '<ul>' + row("Version", s.version) + row("Core", s.core) + row("Google connected", s.google) + row("Billing enabled", s.billing) + row("Email configured", s.email) + row("Weekly summary scheduled", s.emailScheduled) + '</ul>';
+    }
+  }catch(e){}
+  let payHtml = '<p class="muted">PayPal status unavailable — the billing endpoint did not answer.</p>';
+  try{
+    const token = await supabaseAccessToken();
+    if(token){
+      const res = await fetchJsonTimeout(SUPABASE_URL + "/functions/v1/billing", 30000, {method:"POST", headers:{"Content-Type":"application/json", Authorization:"Bearer "+token}, body:JSON.stringify({action:"status"})});
+      const d = await res.json().catch(()=>({}));
+      if(res.ok) payHtml = '<p>Plan: <b>' + esc(d.plan||"free") + '</b></p>';
+    }
+  }catch(e){}
+  let usersHtml = '<p class="muted">User stats unavailable — the admin-stats function did not answer. The rest of this page is unaffected.</p>';
+  try{
+    const token = await supabaseAccessToken();
+    if(token){
+      const res = await fetchJsonTimeout(ADMIN_STATS_FN, 30000, {method:"POST", headers:{"Content-Type":"application/json", Authorization:"Bearer "+token}, body:"{}"});
+      const d = await res.json().catch(()=>({}));
+      if(res.ok && typeof d.totalUsers === "number"){
+        usersHtml = '<ul>'
+          + '<li>Total users: <b>' + d.totalUsers + '</b></li>'
+          + '<li>Pro users: <b>' + d.proUsers + '</b></li>'
+          + '<li>Signups in the last 7 days: <b>' + d.signups7d + '</b></li>'
+          + '<li>Audits run this month (all users): <b>' + d.auditsThisMonth + '</b></li></ul>'
+          + (d.paypalPlanId ? '<p class="muted">PayPal plan ID: ' + esc(d.paypalPlanId) + '</p>' : '')
+          + (d.subscription ? '<p>Subscription: <b>' + esc(d.subscription.status||"") + '</b> <span class="muted">(' + esc(d.subscription.id||"") + ')</span></p>' : '<p class="muted">No PayPal subscription on file.</p>');
+      }
+    }
+  }catch(e){}
+  panel.innerHTML = '<div class="card"><h2>Admin dashboard</h2>'
+    + '<h3>Account</h3><p>Signed in as <b>' + esc(currentUser.email||"") + '</b> — <b>Admin — unlimited</b>, no restrictions.</p>'
+    + '<h3>Platform health</h3>' + healthHtml
+    + '<h3>My totals</h3><ul><li>Audits: <b>' + audits.length + '</b></li><li>Keywords tracked: <b>' + kws.length + '</b></li><li>Links verified: <b>' + links.length + '</b></li><li>Revenue logged: <b>$' + revTotal.toFixed(2) + '</b> across ' + rev.length + ' entries</li><li>Orders: <b>' + orders.length + '</b></li><li>Content briefs: <b>' + briefs.length + '</b></li><li>Competitor compares: <b>' + Math.floor(comps.length/2) + '</b></li></ul>'
+    + '<h3>PayPal</h3>' + payHtml
+    + '<h3>Users (counts only)</h3>' + usersHtml
+    + '</div>';
 }
 async function ensureProfile(user){
   if(!sb) return 'free';
@@ -472,6 +560,7 @@ function usageThisMonth(){
 }
 function limitNoteText(){
   if(!currentUser) return "Not signed in — usage is saved in this browser only. Sign in to keep it in your account.";
+  if(isAdmin()) return "Admin — unlimited: no limits on audits, keywords, link checks, briefs, compares or tool checks.";
   if(currentPlan === 'pro') return "Pro plan: unlimited audits, keywords, link checks, briefs, compares and tool checks.";
   const u = usageThisMonth();
   const v = v25Usage();
@@ -505,7 +594,9 @@ function renderPlanCard(){
   }
   const u = usageThisMonth();
   const v = v25Usage();
-  if(currentPlan === 'pro'){
+  if(isAdmin()){
+    el.innerHTML = '<h2>Your plan — Admin</h2><p>Signed in as ' + esc(currentUser.email) + '.</p><p><b>Admin — unlimited, no restrictions.</b> No limits on audits, keywords, link checks, briefs, compares or tool checks.</p>';
+  }else if(currentPlan === 'pro'){
     el.innerHTML = '<h2>Your plan — Pro</h2><p><b>Pro is active.</b> Signed in as ' + esc(currentUser.email) + '. Unlimited audits, keywords and link checks.</p>';
   }else{
     el.innerHTML = '<h2>Your plan — Free</h2><p>Signed in as ' + esc(currentUser.email) + '.</p>'
@@ -670,7 +761,7 @@ async function runAudit(psiOnly){
   const site = normaliseSite($("auditUrl").value);
   if(!site){ out.innerHTML = '<div class="err">Enter a site URL first.</div>'; btn.disabled=false; psiBtn.disabled=false; return; }
   /* Free-plan limit: 5 audits per calendar month (cloud counts only). */
-  if(S.mode==='cloud' && currentPlan!=='pro'){
+  if(S.mode==='cloud' && currentPlan!=='pro' && !isAdmin()){
     const used = usageThisMonth().auditsUsed;
     if(used >= PLAN_LIMITS.auditsPerMonth){
       out.innerHTML = '<div class="warn"><b>Free plan limit reached.</b> You have used ' + used + ' of ' + PLAN_LIMITS.auditsPerMonth + ' site audits this month. <button class="btn small" data-action="upgrade">Upgrade to Pro — $9/month</button> for unlimited audits.</div>';
@@ -931,7 +1022,7 @@ $("kwBtn").addEventListener("click", runKeywords);
 
 /* ---------- Rank Tracker ---------- */
 function checkKeywordLimit(){
-  if(S.mode!=='cloud' || currentPlan==='pro') return true;
+  if(isAdmin() || S.mode!=='cloud' || currentPlan==='pro') return true;
   const used = S.get("keywords", []).length;
   if(used >= PLAN_LIMITS.keywordsTotal){
     alert("Free plan: you are tracking " + used + " of " + PLAN_LIMITS.keywordsTotal + " keywords. Upgrade to Pro ($9/month) for unlimited keywords.");
@@ -1086,7 +1177,7 @@ async function runLinkVerify(){
   const domain = normHost($("lvDomain").value);
   if(!page || !domain){ out.innerHTML = '<div class="err">Enter both the linking page URL and your domain.</div>'; btn.disabled=false; return; }
   /* Free-plan limit: 5 link verifications per calendar month (cloud counts only). */
-  if(S.mode==='cloud' && currentPlan!=='pro'){
+  if(S.mode==='cloud' && currentPlan!=='pro' && !isAdmin()){
     const used = usageThisMonth().linksUsed;
     if(used >= PLAN_LIMITS.linkChecksPerMonth){
       out.innerHTML = '<div class="warn"><b>Free plan limit reached.</b> You have used ' + used + ' of ' + PLAN_LIMITS.linkChecksPerMonth + ' link verifications this month. <button class="btn small" data-action="upgrade">Upgrade to Pro — $9/month</button> for unlimited checks.</div>';
@@ -1263,12 +1354,12 @@ function agentUsageToday(){
   return d;
 }
 function agentCanChat(){
-  if(currentPlan==="pro") return {ok:true, left:null};
+  if(isAdmin() || currentPlan==="pro") return {ok:true, left:null};
   const u = agentUsageToday();
   return u.used < AGENT_FREE_PER_DAY ? {ok:true, left:AGENT_FREE_PER_DAY-u.used} : {ok:false, left:0};
 }
 function agentBumpUsage(){
-  if(currentPlan==="pro") return;
+  if(isAdmin() || currentPlan==="pro") return;
   const u = agentUsageToday();
   LS.set("agentUsage", {date:u.date, used:u.used+1});
 }
@@ -1824,19 +1915,19 @@ function limitBlocked(outEl, used, limit, what){
   outEl.innerHTML = '<div class="warn"><b>Free plan limit reached.</b> You have used ' + used + ' of ' + limit + ' ' + what + ' this month. <button class="btn small" data-action="upgrade">Upgrade to Pro — $9/month</button> for unlimited use.</div>';
 }
 function checkToolLimit(outEl){
-  if(S.mode!=='cloud' || currentPlan==='pro') return true;
+  if(isAdmin() || S.mode!=='cloud' || currentPlan==='pro') return true;
   const used = v25Usage().toolChecksUsed;
   if(used >= PLAN_LIMITS.toolChecksPerMonth){ limitBlocked(outEl, used, PLAN_LIMITS.toolChecksPerMonth, "tool checks"); return false; }
   return true;
 }
 function checkBriefLimit(outEl){
-  if(S.mode!=='cloud' || currentPlan==='pro') return true;
+  if(isAdmin() || S.mode!=='cloud' || currentPlan==='pro') return true;
   const used = v25Usage().briefsUsed;
   if(used >= PLAN_LIMITS.briefsPerMonth){ limitBlocked(outEl, used, PLAN_LIMITS.briefsPerMonth, "content briefs"); return false; }
   return true;
 }
 function checkCompareLimit(outEl){
-  if(S.mode!=='cloud' || currentPlan==='pro') return true;
+  if(isAdmin() || S.mode!=='cloud' || currentPlan==='pro') return true;
   const used = v25Usage().comparesUsed;
   if(used >= PLAN_LIMITS.comparesPerMonth){ limitBlocked(outEl, used, PLAN_LIMITS.comparesPerMonth, "competitor compares"); return false; }
   return true;
@@ -2653,7 +2744,7 @@ async function runHealth(){
   const url = normaliseSite($("hcUrl").value);
   if(!url){ out.innerHTML = '<div class="err">Enter a page URL first.</div>'; return; }
   /* The PageSpeed check inside the health check counts as one site audit. */
-  if(S.mode==='cloud' && currentPlan!=='pro'){
+  if(S.mode==='cloud' && currentPlan!=='pro' && !isAdmin()){
     const used = usageThisMonth().auditsUsed;
     if(used >= PLAN_LIMITS.auditsPerMonth){
       out.innerHTML = '<div class="warn"><b>Free plan limit reached.</b> The health check runs PageSpeed, which counts as a site audit — you have used ' + used + ' of ' + PLAN_LIMITS.auditsPerMonth + ' this month. <button class="btn small" data-action="upgrade">Upgrade to Pro — $9/month</button> for unlimited audits.</div>';
@@ -2712,7 +2803,7 @@ async function runBulkAudit(){
   out.innerHTML = ""; prog.textContent = "";
   let urls = ($("bkUrls").value||"").split("\n").map(s => normaliseSite(s)).filter(Boolean).slice(0, 5);
   if(!urls.length){ out.innerHTML = '<div class="err">Enter at least one URL (one per line, max 5).</div>'; return; }
-  if(S.mode==='cloud' && currentPlan!=='pro'){
+  if(S.mode==='cloud' && currentPlan!=='pro' && !isAdmin()){
     const used = usageThisMonth().auditsUsed;
     const remaining = PLAN_LIMITS.auditsPerMonth - used;
     if(remaining <= 0){
@@ -3027,6 +3118,7 @@ function initAppFromUrl(){
   const tab = parseTabHash(location.hash);
   const auth = parseAuthHash(location.hash);
   const returning = /[?&]code=/.test(location.search||"");
+  if(/#guest\b/.test(location.hash||"")) enterGuestMode(); /* persist the guest flag so a reload stays in the app */
   if(auth){ showAuthView(auth); if(tab) showTab(tab); return; }
   if(isGuestMode() || hasSavedSession() || returning){ showApp(); showTab(tab || "dashboard"); return; }
   if(tab) showTab(tab);
