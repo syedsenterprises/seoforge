@@ -1,5 +1,5 @@
 
-const defaults={APP_ORIGINS:"https://syedsenterprises.github.io",GOOGLE_CLIENT_ID:"158848063786-cmdknljpjj6po7j2uc4r26dp31qm4nek.apps.googleusercontent.com",GOOGLE_REDIRECT_URI:"https://syedsenterprises.github.io/seoforge/",BILLING_ENABLED:"false"};
+const defaults={APP_ORIGINS:"https://seoforge.syedsenterprises.org,https://syedsenterprises.github.io",GOOGLE_CLIENT_ID:"158848063786-cmdknljpjj6po7j2uc4r26dp31qm4nek.apps.googleusercontent.com",GOOGLE_REDIRECT_URI:"https://seoforge.syedsenterprises.org/",BILLING_ENABLED:"false"};
 export function env(name){ const value=Deno.env.get(name)||defaults[name]; if(!value) throw new Error("Missing server configuration: "+name); return value; }
 export function json(data,status=200,origin=""){
   return new Response(JSON.stringify(data),{status,headers:{"Content-Type":"application/json","Cache-Control":"no-store","Access-Control-Allow-Origin":origin,"Vary":"Origin","Access-Control-Allow-Headers":"authorization, apikey, content-type, x-client-info, x-cron-secret","Access-Control-Allow-Methods":"POST, OPTIONS"}});
