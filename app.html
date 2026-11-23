@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SEOForge — App</title>
 <meta name="robots" content="noindex">
-<meta name="description" content="SEOForge v2.10.0: site audit, keyword explorer, rank tracking, link checks, SERP preview, broken-link and redirect checks, schema detector, robots/sitemap tools, content briefs, competitor compare, Search Console &amp; Analytics, ad revenue hub, link marketplace and an in-site AI assistant (your own key). Free plan or Pro $9/month. Free data sources only, no invented numbers.">
+<meta name="description" content="SEOForge v2.11.0: site audit, keyword explorer, rank tracking, link checks, SERP preview, broken-link and redirect checks, schema detector, robots/sitemap tools, content briefs, competitor compare, Search Console &amp; Analytics, ad revenue hub, link marketplace and an in-site AI assistant (your own key). Free plan, Pro $9/month, Agency $29/month, Business custom. Free data sources only, no invented numbers.">
 <link rel="icon" href="./logo.png" type="image/png">
 <link rel="canonical" href="https://seoforge.syedsenterprises.org/app.html">
 <meta property="og:title" content="SEOForge by Syeds Enterprises — SEO, Ads &amp; Links in One Place">
@@ -69,7 +69,8 @@
     <button id="googleSignInBtn" type="button" class="ghost">Continue with Google</button>
     <button id="resendBtn" type="button" class="ghost" hidden>Resend confirmation email</button>
   </div>
-  <p class="muted"><button type="button" class="linklike" id="authGuestLink">Continue without an account</button> — use every tool in this browser only.</p>
+  <div class="row"><button type="button" class="btn secondary" id="authGuestLink">Continue without an account</button></div>
+  <p class="muted">Use every tool in this browser only — nothing is saved to an account.</p>
 </section>
 
 <!-- ============ APP ============ -->
@@ -123,16 +124,16 @@
 
 <!-- ============ DASHBOARD ============ -->
 <section class="tab active" id="tab-dashboard">
-  <div class="card" id="planCard"></div>
+  <div class="card page-head" id="planCard"></div>
   <div class="card">
     <h2>Dashboard</h2>
     <p class="muted" id="dashStoreNote">Totals are computed from what is saved in this browser only (localStorage). Live tools send requested URLs and keywords to external providers.</p>
     <div class="grid">
-      <div class="stat" title="Site audits saved in this account or browser"><b id="stAudits">0</b><span>site audits run</span></div>
-      <div class="stat" title="Keywords in the Rank Tracker"><b id="stKeywords">0</b><span>keywords tracked</span></div>
-      <div class="stat" title="Paid links verified with the Link Verifier"><b id="stLinks">0</b><span>links verified</span></div>
-      <div class="stat" title="Ad revenue you logged by hand"><b id="stRevenue">$0.00</b><span>ad revenue logged</span></div>
-      <div class="stat" title="Marketplace orders recorded"><b id="stOrders">0</b><span>marketplace orders</span></div>
+      <div class="stat" title="Site audits saved in this account or browser"><b id="stAudits">…</b><span>site audits run</span></div>
+      <div class="stat" title="Keywords in the Rank Tracker"><b id="stKeywords">…</b><span>keywords tracked</span></div>
+      <div class="stat" id="stLinksStat" title="Links found across your Link Verifier checks"><b id="stLinks">…</b><span>links verified</span></div>
+      <div class="stat" title="Ad revenue you logged by hand"><b id="stRevenue">…</b><span>ad revenue logged</span></div>
+      <div class="stat" title="Marketplace orders recorded"><b id="stOrders">…</b><span>marketplace orders</span></div>
     </div>
     <div class="row">
       <button class="btn secondary" data-goto="audit">Run a site audit</button>
@@ -169,6 +170,8 @@
   </div>
   <div class="card">
     <h2>Data sources &amp; honest limits</h2>
+    <details>
+      <summary>What each tool measures — and what it never invents</summary>
     <ul class="muted" style="margin:6px 0;padding-left:20px">
       <li><b>Site Audit:</b> your sitemap fetched through our server-side proxy; PageSpeed Insights (Google). Scores come from Google's API through SEOForge's server key — if the quota is exhausted, the app says so instead of showing a fake score. Your own free API key in Workspace settings uses your own quota instead.</li>
       <li><b>Keyword Explorer:</b> live suggestions from Google Suggest. Search volume is <b>not</b> available without a paid keyword API — it is never invented here.</li>
@@ -182,12 +185,13 @@
       <li><b>Content briefs:</b> headings and word counts come from reading the live top 5 pages (from Bing search results); questions come from Google Suggest.</li>
       <li><b>Compare:</b> when a page cannot be read, the table says so — no numbers are shown for it. A failed fetch is never measured as data.</li>
     </ul>
+    </details>
   </div>
 </section>
 
 <!-- ============ SITE AUDIT ============ -->
 <section class="tab" id="tab-audit">
-  <div class="card">
+  <div class="card page-head">
     <h2>Site Audit</h2>
     <p class="muted">Screaming Frog-style crawl of a sitemap, plus Google PageSpeed Insights. Enter a site URL (or a sitemap.xml URL directly).</p>
     <div class="limit-note" id="auditLimitNote"></div>
@@ -220,7 +224,7 @@
 
 <!-- ============ KEYWORD EXPLORER ============ -->
 <section class="tab" id="tab-keywords">
-  <div class="card">
+  <div class="card page-head">
     <h2>Keyword Explorer</h2>
     <p class="muted">Live suggestions from Google Suggest for your seed keyword, plus question/buyer expansions and a–z. Suggestions are real; search volume is not shown because no free keyword API provides it — it is never invented.</p>
     <label for="seedKw">Seed keyword</label>
@@ -233,7 +237,7 @@
 
 <!-- ============ RANK TRACKER ============ -->
 <section class="tab" id="tab-rank">
-  <div class="card">
+  <div class="card page-head">
     <h2>Rank Tracker</h2>
     <p class="muted">Checks where your page appears in <b>Bing</b> results for a keyword — labelled clearly, because this is <b>not Google</b> (DuckDuckGo blocks our server, so it is only a fallback). Positions are stored with the check date.</p>
     <div class="limit-note" id="rkLimitNote"></div>
@@ -255,7 +259,7 @@
 
 <!-- ============ LINK VERIFIER ============ -->
 <section class="tab" id="tab-links">
-  <div class="card">
+  <div class="card page-head">
     <h2>Link Verifier</h2>
     <p class="muted">Reads the live linking page and reports every link pointing at your domain, with its real <code>rel</code> attribute. Use it to check paid listings before you call them done.</p>
     <div class="limit-note" id="lvLimitNote"></div>
@@ -275,7 +279,7 @@
 </section>
 
 <!-- ============ AD REVENUE ============ -->
-<section class="tab" id="tab-preferences"><div class="card"><h2>Integration status</h2><p id="integrationReadiness" role="status">Checking integration readiness…</p><button class="btn secondary" id="integrationRefresh">Refresh status</button><button class="btn secondary" id="billingRefresh">Refresh subscription</button><p><a href="https://www.paypal.com/myaccount/autopay/" target="_blank" rel="noopener">Manage or cancel PayPal subscriptions</a></p></div>
+<section class="tab" id="tab-preferences"><div class="card page-head"><h2>Integration status</h2><p id="integrationReadiness" role="status">Checking integration readiness…</p><button class="btn secondary" id="integrationRefresh">Refresh status</button><button class="btn secondary" id="billingRefresh">Refresh subscription</button><p><a href="https://www.paypal.com/myaccount/autopay/" target="_blank" rel="noopener">Manage or cancel PayPal subscriptions</a></p></div>
 <div class="card">
 <h2 id="workspaceName">SEOForge</h2><p class="muted">Personalize this workspace. Preferences are saved per account in this browser.</p>
 <label for="prefBrand">Workspace name</label><input id="prefBrand" type="text" maxlength="60">
@@ -292,7 +296,8 @@
     <h2>PageSpeed API key (optional)</h2>
     <p class="muted">Leave blank and PageSpeed runs through SEOForge's server key — no key needed from you. Add your own free Google Cloud key here to use your own quota instead. Keys are stored <b>only in this browser's localStorage</b> and are never sent anywhere except to the service they belong to, when you run a check.</p>
     <label for="setPsi">Google PageSpeed Insights API key (free from Google Cloud Console — raises the daily quota)</label>
-    <input type="text" id="setPsi" placeholder="Leave blank for no-key mode">
+    <input type="password" id="setPsi" placeholder="Leave blank for no-key mode" autocomplete="off">
+    <div class="row"><button class="btn small secondary" type="button" id="setPsiToggle">Show key</button></div>
     <h3 style="margin-top:14px">AI Assistant — your own key</h3>
     <p class="muted">The in-site assistant ("Ask Forge" button, bottom right) answers SEO questions from your saved data. It runs on <b>your own AI key</b> — SEOForge stores no key server-side and pays nothing for your chats. Pick a provider, paste the key, save.</p>
     <label for="setAiProvider">AI provider</label>
@@ -303,6 +308,7 @@
     </select>
     <label for="setAiKey">API key</label>
     <input type="password" id="setAiKey" placeholder="Paste your key — stored only in this browser" autocomplete="off">
+    <div class="row"><button class="btn small secondary" type="button" id="setAiToggle">Show key</button></div>
     <label for="setAiBaseUrl">Provider base URL</label>
     <input type="text" id="setAiBaseUrl" placeholder="e.g. https://generativelanguage.googleapis.com/v1beta/openai">
     <label for="setAiModel">Model</label>
@@ -329,20 +335,35 @@
     <p class="muted">Sign in to save your preference. Delivery requires a configured email service and schedule; see Workspace settings for availability. Failed saves leave your previous preference unchanged.</p>
   </div>
 <div class="card">
-  <h2>My sites (up to 3)</h2>
+  <h2>My sites</h2>
   <p class="muted">The site switcher in the header defaults every tool's URL input to the selected site. Saved in this browser.</p>
+  <p class="muted" id="siteLimitNote">Your plan allows 1 site.</p>
   <label for="siteSlot1">Site 1</label>
   <input type="url" id="siteSlot1" placeholder="e.g. https://example.com">
   <label for="siteSlot2">Site 2</label>
   <input type="url" id="siteSlot2" placeholder="e.g. https://example.com">
   <label for="siteSlot3">Site 3</label>
   <input type="url" id="siteSlot3" placeholder="e.g. https://example.com">
+  <label for="siteSlot4">Site 4</label>
+  <input type="url" id="siteSlot4" placeholder="e.g. https://example.com">
+  <label for="siteSlot5">Site 5</label>
+  <input type="url" id="siteSlot5" placeholder="e.g. https://example.com">
+  <label for="siteSlot6">Site 6</label>
+  <input type="url" id="siteSlot6" placeholder="e.g. https://example.com">
+  <label for="siteSlot7">Site 7</label>
+  <input type="url" id="siteSlot7" placeholder="e.g. https://example.com">
+  <label for="siteSlot8">Site 8</label>
+  <input type="url" id="siteSlot8" placeholder="e.g. https://example.com">
+  <label for="siteSlot9">Site 9</label>
+  <input type="url" id="siteSlot9" placeholder="e.g. https://example.com">
+  <label for="siteSlot10">Site 10</label>
+  <input type="url" id="siteSlot10" placeholder="e.g. https://example.com">
   <button class="btn" id="siteSaveBtn">Save my sites</button>
   <span class="muted" id="siteSaved"></span>
 </div>
 </section>
 <section class="tab" id="tab-ads">
-  <div class="card">
+  <div class="card page-head">
     <h2>Ad Revenue Hub</h2>
     <p class="muted">Log daily revenue by hand. Totals are computed from your entries only — nothing here is a live network figure until API sync arrives in v3.</p>
     <div class="row">
@@ -370,7 +391,7 @@
 
 <!-- ============ MARKETPLACE ============ -->
 <section class="tab" id="tab-market">
-  <div class="card">
+  <div class="card page-head">
     <h2>Link Marketplace</h2>
     <p class="muted">Your real inventory only. Orders are records — you complete the sale yourself with the buyer. No fake listings, no fake buyers, no fake sales.</p>
     <div id="mktList"></div>
@@ -386,7 +407,7 @@
       </div>
       <div>
         <label for="mkPrice">Price (USD, one-time)</label>
-        <input type="number" id="mkPrice" placeholder="20" min="0" step="1">
+        <input type="number" id="mkPrice" placeholder="Leave blank for DM for rates" min="0" step="1">
       </div>
     </div>
     <div class="row">
@@ -407,7 +428,7 @@
 
 <!-- ============ SEARCH CONSOLE + ANALYTICS (v2.8) ============ -->
 <section class="tab" id="tab-gsc">
-  <div class="card">
+  <div class="card page-head">
     <h2>Search Console &amp; Analytics</h2>
     <p class="muted">Real data from your own Google account, read-only, fetched through the SEOForge edge function — your Google tokens are stored in Supabase, never in this page.</p>
     <div id="gscStatus" class="muted">Sign in to SEOForge first, then connect Google.</div>
@@ -459,7 +480,7 @@
 
 <!-- ============ SERP PREVIEW (v2.5) ============ -->
 <section class="tab" id="tab-serp">
-  <div class="card">
+  <div class="card page-head">
     <h2>SERP Preview + Meta / OG Checker</h2>
     <p class="muted">See how a page looks in Google results and when shared on social media. Reads the page's real title, meta description and Open Graph / Twitter tags.</p>
     <label for="serpUrl">Page URL</label>
@@ -472,7 +493,7 @@
 
 <!-- ============ BROKEN LINK CHECKER (v2.5) ============ -->
 <section class="tab" id="tab-broken">
-  <div class="card">
+  <div class="card page-head">
     <h2>Broken Link Checker</h2>
     <p class="muted">Fetches a page, lists every link on it and checks each one live. Up to 100 links per check. A “proxy error” means the free proxy could not reach that link — it does not prove the link is broken.</p>
     <div class="limit-note" id="blLimitNote"></div>
@@ -486,7 +507,7 @@
 
 <!-- ============ REDIRECT CHAIN (v2.5) ============ -->
 <section class="tab" id="tab-redirect">
-  <div class="card">
+  <div class="card page-head">
     <h2>Redirect Chain Checker</h2>
     <p class="muted">Follows a URL's redirects and shows every hop. Honest note: free proxies follow redirects on their own servers and do not always expose the intermediate hops — when that happens this shows the final URL and status, and says so.</p>
     <div class="limit-note" id="rdLimitNote"></div>
@@ -501,7 +522,7 @@
 
 <!-- ============ SCHEMA DETECTOR (v2.5) ============ -->
 <section class="tab" id="tab-schema">
-  <div class="card">
+  <div class="card page-head">
     <h2>Schema / JSON-LD Detector</h2>
     <p class="muted">Finds every structured-data block on a page and lists its type — Article, FAQPage, Product, LocalBusiness and more — with the raw JSON-LD to inspect.</p>
     <div class="limit-note" id="scLimitNote"></div>
@@ -515,7 +536,7 @@
 
 <!-- ============ ROBOTS & SITEMAP (v2.5) ============ -->
 <section class="tab" id="tab-robots">
-  <div class="card">
+  <div class="card page-head">
     <h2>Robots.txt Tester</h2>
     <p class="muted">Fetches a site's robots.txt, shows it, and tests whether a path is allowed. Rules are matched the way search engines do: longest matching rule wins, Allow beats Disallow on a tie.</p>
     <div class="limit-note" id="rbLimitNote"></div>
@@ -557,7 +578,7 @@
 
 <!-- ============ CONTENT BRIEFS (v2.5) ============ -->
 <section class="tab" id="tab-brief">
-  <div class="card">
+  <div class="card page-head">
     <h2>Content Brief Generator</h2>
     <p class="muted">Enter a keyword. SEOForge reads the top 5 ranking pages from Bing search results (their headings and length), pulls real question suggestions, and builds a brief: headings to cover, questions to answer, pages to beat, and a target word count (median of the top 5, rounded up — labelled as an estimate).</p>
     <div class="limit-note" id="brLimitNote"></div>
@@ -575,7 +596,7 @@
 
 <!-- ============ COMPETITOR COMPARE (v2.5) ============ -->
 <section class="tab" id="tab-compete">
-  <div class="card">
+  <div class="card page-head">
     <h2>Competitor Compare</h2>
     <p class="muted">Two URLs side by side: PageSpeed score, title and meta description, H1 count and word count. PageSpeed uses Google's free quota — if it returns 429, the exact error is shown and the on-page numbers are still compared.</p>
     <div class="limit-note" id="cpLimitNote"></div>
@@ -595,7 +616,7 @@
 
 <!-- ============ REVENUE ESTIMATOR (v2.5) ============ -->
 <section class="tab" id="tab-estimator">
-  <div class="card">
+  <div class="card page-head">
     <h2>Ad Revenue Estimator</h2>
     <p class="muted">Estimate what your traffic could earn from display ads. This is an <b>estimate</b> from typical published AdSense RPM ranges — not a promise. Actual earnings depend on traffic country, ad placement, season and network.</p>
     <label for="estViews">Monthly pageviews</label>
@@ -609,7 +630,7 @@
 
 <!-- ============ HEALTH CHECKLIST (v2.5) ============ -->
 <section class="tab" id="tab-health">
-  <div class="card">
+  <div class="card page-head">
     <h2>SEO Health Checklist</h2>
     <p class="muted">Eight live checks on one URL: HTTPS, title length, meta description, exactly one H1, image alt text, viewport tag, mobile PageSpeed score, and the SEOForge Speed Score. The PageSpeed check counts as one of your monthly site audits.</p>
     <div class="limit-note" id="hcLimitNote"></div>
@@ -623,7 +644,7 @@
 
 <!-- ============ BULK AUDIT (v2.5) ============ -->
 <section class="tab" id="tab-bulk">
-  <div class="card">
+  <div class="card page-head">
     <h2>Bulk Audit</h2>
     <p class="muted">Run PageSpeed on up to 5 URLs in one go. Each URL counts as one site audit against your monthly limit. If Google's free PageSpeed quota is exhausted, the exact error is shown per URL — no fake scores.</p>
     <div class="limit-note" id="bkLimitNote"></div>
@@ -635,11 +656,12 @@
   </div>
 </section>
 
-</main>
-</div><!-- /appShell -->
 <footer>
   SEOForge <span data-app-version></span> — by Syeds Enterprises. Signed-in users' data is stored in their Supabase account; logged-out use stays in this browser (localStorage). Integrations: Google Search Console + Analytics (read-only OAuth, tokens in Supabase), PayPal subscriptions (verified by webhook), email alerts (opt-in), AI assistant (runs on your own key). Free data sources only: Google PageSpeed Insights, Google Suggest, Bing search results (DuckDuckGo fallback), public CORS proxies. No backlink index is faked; no search volume is invented. <a href="./privacy.html">Privacy Policy</a> · <a href="./terms.html">Terms of Service</a>
 </footer>
+
+</main>
+</div><!-- /appShell -->
 
 <button class="btn" id="agentBtn">Ask Forge</button>
 <div id="agentPanel" class="agent-panel" hidden>
@@ -669,7 +691,10 @@
       if(raw){ var s = JSON.parse(raw); session = !!(s && s.access_token && (!s.expires_at || s.expires_at*1000 > Date.now())); }
     }catch(e){}
     var returning = /[?&]code=/.test(location.search || "");
-    if(!authIntent && (guest || session || returning)){ auth.hidden = true; shell.hidden = false; }
+    /* A shared score link (#tab=health&url=...) is a guest intent too: show
+       the app shell at once — initAppFromUrl() runs the check after auth. */
+    var share = /#tab=health&url=/.test(h);
+    if(!authIntent && (guest || session || returning || share)){ auth.hidden = true; shell.hidden = false; }
   }catch(e){}
 })();
 </script>
