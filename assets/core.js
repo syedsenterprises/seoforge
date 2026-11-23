@@ -102,7 +102,7 @@
   function validatePreferences(value) {
     const v = value && typeof value === "object" ? value : {};
     return {
-      theme: ["system", "light", "dark"].includes(v.theme) ? v.theme : "system",
+      theme: ["system", "light", "dark"].includes(v.theme) ? v.theme : "light",
       accent: resolveAccent(v.accent),
       density: v.density === "compact" ? "compact" : "comfortable",
       brand: String(v.brand || "SEOForge").trim().slice(0, 60) || "SEOForge",
