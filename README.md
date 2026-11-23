@@ -9,7 +9,7 @@ Use Node 22 or later. Run npm run check and npm test, then serve the directory w
 ## Included tools
 
 - Site audits and PageSpeed (mobile/desktop), bulk audits, health checklist.
-- Google Suggest keyword research, DuckDuckGo rank observations and difficulty estimates.
+- Google Suggest keyword research, Bing rank observations (DuckDuckGo fallback) and difficulty estimates.
 - Link verification, broken-link checks, redirect inspection, schema detection, robots and sitemap utilities.
 - SERP/social previews, content briefs and competitor comparisons.
 - Manual revenue logging and estimates; personal listings and order records.
@@ -18,7 +18,7 @@ Use Node 22 or later. Run npm run check and npm test, then serve the directory w
 - Workspace name, system/light/dark themes, accent color, compact density, default website and audit device.
 - Email/password authentication and password recovery.
 
-Marketplace records are not a public marketplace or order fulfillment system. Ad-network API credentials do not enable automatic revenue synchronization. Public fetch proxies and DuckDuckGo can be unavailable or block requests.
+Marketplace records are not a public marketplace or order fulfillment system. Ad-network API credentials do not enable automatic revenue synchronization. Public fetch proxies and Bing/DuckDuckGo search can be unavailable or block requests.
 
 ## Security changes
 
