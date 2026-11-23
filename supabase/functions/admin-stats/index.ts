@@ -52,8 +52,14 @@ Deno.serve(async req=>{
       countRows("profiles", "plan=eq.business"),
       /* Paying users = ACTIVE billing_subscriptions only. An abandoned
          APPROVAL_PENDING subscription (left by an earlier QA walkthrough)
-         never counts here. */
-      countRows("billing_subscriptions", "status=eq.ACTIVE"),
+         never counts here. Counted via db(), NOT countRows(): the raw
+         countRows fetch (Prefer: count=exact) fails live on this one table
+         even though the query shape is valid and the service key reads the
+         same table fine through db() (the PayPal webhook does it on every
+         event). Live 24 Nov 2026: the panel 400d with a 61-byte body that
+         fingerprints exactly this count. Rows are few; counting them in JS
+         is exact at this scale. */
+      db("billing_subscriptions?select=user_id&status=eq.ACTIVE").then(rows => (rows||[]).length),
       countRows("profiles", "created_at=gte."+encodeURIComponent(sevenDaysAgo)),
       countRows("audits", "created_at=gte."+encodeURIComponent(monthStart)),
     ]);
@@ -61,6 +67,10 @@ Deno.serve(async req=>{
     const sub = subs[0] ? {id:subs[0].subscription_id||"", status:subs[0].status||""} : null;
     return json({totalUsers, proUsers, agencyUsers, businessUsers, payingUsers, signups7d, auditsThisMonth, paypalPlanId:optEnv("PAYPAL_PLAN_PRO_MONTHLY") || optEnv("PAYPAL_PLAN_ID"), subscription:sub},200,origin);
   }catch(e){
+    /* Log the real error: the dashboard invocation logs record only the
+       status and body length, never the body — two rounds of blind
+       diagnosis (23–24 Nov 2026) cost hours because this line was missing. */
+    try{ console.error("admin-stats failed:", e && e.message ? e.message : e); }catch(_){}
     return json({error:String(e.message||e)},400,origin);
   }
 });
