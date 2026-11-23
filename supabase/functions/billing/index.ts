@@ -1,4 +1,5 @@
-import {env,db,authenticate,body,serve} from "../_shared/http.js";
+
+import {env,optEnv,db,authenticate,body,serve} from "../_shared/http.js";
 import {paypal,verifiedSubscription,planToTier} from "../_shared/paypal.js";
 serve(async req=>{
   const user=await authenticate(req), input=await body(req);
@@ -34,17 +35,22 @@ serve(async req=>{
      sales). An unconfigured plan fails honestly instead of charging the wrong
      plan — the plan IDs live in Supabase secrets, never in this code. */
   const PLAN_KEYS = {
-    "pro-monthly": () => env("PAYPAL_PLAN_PRO_MONTHLY") || env("PAYPAL_PLAN_ID"),
-    "pro-yearly": () => env("PAYPAL_PLAN_PRO_YEARLY"),
-    "agency-monthly": () => env("PAYPAL_PLAN_AGENCY_MONTHLY"),
-    "agency-yearly": () => env("PAYPAL_PLAN_AGENCY_YEARLY"),
+    "pro-monthly": () => optEnv("PAYPAL_PLAN_PRO_MONTHLY") || optEnv("PAYPAL_PLAN_ID"),
+    "pro-yearly": () => optEnv("PAYPAL_PLAN_PRO_YEARLY"),
+    "agency-monthly": () => optEnv("PAYPAL_PLAN_AGENCY_MONTHLY"),
+    "agency-yearly": () => optEnv("PAYPAL_PLAN_AGENCY_YEARLY"),
   };
   const resolve = PLAN_KEYS[input.plan || "pro-monthly"];
   if(!resolve) throw new Error("Unknown plan — choose Pro or Agency in the app");
   const planId = resolve();
   if(!planId) throw new Error("That plan is not set up yet — the owner is still creating it in PayPal. Free accounts keep working meanwhile.");
   const attempt=await db("rpc/checkout_attempt","POST",{p_user:user.id,p_previous:existing[0]?.subscription_id||null});
-  const result=await paypal("/v1/billing/subscriptions","POST",{plan_id:planId,custom_id:user.id,application_context:{brand_name:"SEOForge",user_action:"SUBSCRIBE_NOW",return_url:env("GOOGLE_REDIRECT_URI"),cancel_url:env("GOOGLE_REDIRECT_URI")}},attempt);
+  /* Return URL: prefer a dedicated APP_URL secret; fall back to the Google
+     redirect URI only because it currently holds the same app URL. APP_URL is
+     optional — optEnv, never env(), or an unset APP_URL would throw and break
+     every checkout. */
+  const appUrl=optEnv("APP_URL") || env("GOOGLE_REDIRECT_URI");
+  const result=await paypal("/v1/billing/subscriptions","POST",{plan_id:planId,custom_id:user.id,application_context:{brand_name:"SEOForge",user_action:"SUBSCRIBE_NOW",return_url:appUrl,cancel_url:appUrl}},attempt);
   // Unique user_id prevents simultaneous checkout requests from binding multiple subscriptions.
   await db("billing_subscriptions?on_conflict=user_id","POST",{user_id:user.id,subscription_id:result.id,status:result.status});
   const url=result.links?.find(l=>l.rel==="approve")?.href;
