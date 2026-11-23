@@ -97,3 +97,22 @@ test("Failed comparison persistence keeps the result and shows an unsaved warnin
   assert.match(a.elements.get("cpOut").innerHTML,/Comparison not saved/);
   assert.match(a.elements.get("cpOut").innerHTML,/<table>/);
 });
+
+test("SEOForge Speed Score: fast light page scores 100",()=>{
+  const a=app();
+  const sf=a.run(`scoreSpeedMetrics({ttfbMs:150,bytes:80000,textBytes:80000,blocking:0,encoding:"br",cache:"public, max-age=31536000, immutable",imgs:2,sized:2,raster:2,modern:2,resources:12})`);
+  assert.equal(sf.score,100);
+  assert.equal(sf.grade,"Excellent");
+});
+test("SEOForge Speed Score: slow heavy page scores 0",()=>{
+  const a=app();
+  const sf=a.run(`scoreSpeedMetrics({ttfbMs:2400,bytes:1500000,textBytes:1500000,blocking:14,encoding:"",cache:"",imgs:10,sized:0,raster:10,modern:0,resources:120})`);
+  assert.equal(sf.score,0);
+  assert.equal(sf.grade,"Poor");
+});
+test("SEOForge Speed Score: missing timings still scores what was measured",()=>{
+  const a=app();
+  const sf=a.run(`scoreSpeedMetrics({ttfbMs:null,bytes:null,textBytes:60000,blocking:2,encoding:"gzip",cache:"max-age=3600",imgs:0,sized:0,raster:0,modern:0,resources:15})`);
+  assert.equal(sf.score,66);
+  assert.equal(sf.grade,"Needs work");
+});
