@@ -13,7 +13,7 @@ serve(async req=>{
     if(!user.email) continue;
     const keywords=await db("keywords?user_id=eq."+user.id+"&select=id,keyword&limit=100");
     const checks=await db("rank_checks?user_id=eq."+user.id+"&order=checked_at.desc&limit=1000");
-    const html="<h1>Your SEOForge rank summary</h1><p>Latest saved DuckDuckGo observations. This email does not run new rank checks.</p><ul>"+keywords.map(k=>{
+    const html="<h1>Your SEOForge rank summary</h1><p>Latest saved Bing observations. This email does not run new rank checks.</p><ul>"+keywords.map(k=>{
       const history=checks.filter(c=>c.keyword_id===k.id).slice(0,2);
       return "<li>"+escape(k.keyword)+": "+(history.length?(history[0].position==null?"not in parsed results":"#"+Number(history[0].position))+" (checked "+escape(history[0].checked_at)+")":"not checked")+"</li>";
     }).join("")+"</ul>";
