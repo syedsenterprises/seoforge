@@ -23,3 +23,6 @@ verify_jwt = false
 
 [functions.pagespeed]
 verify_jwt = false
+
+[functions.admin-stats]
+verify_jwt = false
