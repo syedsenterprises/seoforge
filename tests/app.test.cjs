@@ -915,10 +915,55 @@ test("Trust: score ring, verify link, measured line",()=>{
   assert.match(a.run('measuredLine("x")'),/checked just now/);
 });
 /* ---------- v2.11.0: app presentation pass ---------- */
-test("App presentation: every tab section has a page header, the guest action is a button, 10 site slots",()=>{
+test("App presentation: every tab section has a page header, the guest action is a quiet text link, 10 site slots",()=>{
   assert.equal((html.match(/class="card page-head"/g)||[]).length,19);
-  assert.match(html,/<button type="button" class="btn secondary" id="authGuestLink">Continue without an account<\/button>/);
+  assert.match(html,/<button type="button" class="text-link" id="authGuestLink">Continue without an account<\/button>/);
+  assert.doesNotMatch(html,/headerGuestBtn/); /* no redundant header "Launch app" button — guest entry is the card's quiet link */
   for(let i=1;i<=10;i++) assert.ok(html.includes('id="siteSlot'+i+'"'),"missing siteSlot"+i);
+});
+/* ---------- v2.11.x: auth view is one mode at a time ---------- */
+test("Auth view: heading and single primary button always match the mode",()=>{
+  const a=app();
+  a.run('showAuthView("signup")');
+  assert.equal(a.run("authMode"),"signup");
+  assert.equal(a.elements.get("authViewTitle").textContent,"Create your free account");
+  assert.equal(a.elements.get("signUpBtn").hidden,false);
+  assert.equal(a.elements.get("signInBtn").hidden,true);
+  assert.equal(a.elements.get("forgotPassword").hidden,true); /* reset is sign-in only */
+  assert.equal(a.elements.get("googleSignInBtn").hidden,false);
+  assert.equal(a.elements.get("authGuestLink").hidden,false);
+  assert.match(a.elements.get("authModeSwitch").textContent,/Already have an account\? Sign in/);
+  assert.equal(a.elements.get("authModeSwitch").href,"#auth=signin");
+  assert.equal(a.context.document.documentElement.dataset.authView,"1"); /* minimal header while the card is up */
+  a.run('showAuthView("signin")');
+  assert.equal(a.run("authMode"),"signin");
+  assert.equal(a.elements.get("authViewTitle").textContent,"Sign in to SEOForge");
+  assert.equal(a.elements.get("signInBtn").hidden,false);
+  assert.equal(a.elements.get("signUpBtn").hidden,true);
+  assert.equal(a.elements.get("forgotPassword").hidden,false);
+  assert.equal(a.elements.get("googleSignInBtn").hidden,false);
+  assert.match(a.elements.get("authModeSwitch").textContent,/No account yet\? Create a free account/);
+  assert.equal(a.elements.get("authModeSwitch").href,"#auth=signup");
+  a.run("showApp()");
+  assert.equal(a.context.document.documentElement.dataset.authView,undefined); /* full header returns with the app */
+  assert.equal(a.elements.get("authView").hidden,true);
+});
+test("Auth view: Enter submits the shown mode, not always sign-in",async()=>{
+  const a=app();
+  a.run('cloudAvailable=true; sb={auth:{signUp:async()=>({data:{user:{identities:[]}},error:null}),signInWithPassword:async()=>({data:{},error:{message:"Invalid login credentials"}})}};');
+  a.elements.get("authEmail").value="someone@example.com";
+  a.elements.get("authPass").value="a-very-long-password";
+  a.run('showAuthView("signup")');
+  await a.elements.get("authPass").listeners.keydown({key:"Enter"});
+  assert.match(a.elements.get("authMsg").textContent,/already exists/);
+  a.run('showAuthView("signin")');
+  await a.elements.get("authPass").listeners.keydown({key:"Enter"});
+  assert.match(a.elements.get("authMsg").textContent,/Sign-in failed/);
+});
+test("Theme: the Settings select lists Light first (the new default)",()=>{
+  const m=html.match(/<select id="prefTheme">([\s\S]*?)<\/select>/);
+  assert.ok(m,"prefTheme select missing");
+  assert.deepEqual([...m[1].matchAll(/value="([^"]+)"/g)].map(x=>x[1]),["light","dark","system"]);
 });
 /* ---------- v2.11.0: landing redesign (item 14) ---------- */
 test("Landing: the three paths are real buttons with the right destinations",()=>{
