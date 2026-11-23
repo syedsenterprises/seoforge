@@ -1,6 +1,17 @@
 # SEOForge
 
-SEO research workspace by Syeds Enterprises. Static HTML/CSS/JavaScript frontend, Supabase Auth/Postgres, and Supabase Edge Functions. No frontend build step.
+Free SEO toolkit by Syeds Enterprises — a public SaaS, live at https://seoforge.syedsenterprises.org/. Static HTML/CSS/JavaScript frontend, Supabase Auth/Postgres, and Supabase Edge Functions. No frontend build step.
+
+Free tools on real public data, no invented numbers: site audits and PageSpeed, keyword ideas, rank observations, link checks, content briefs, competitor comparisons, revenue logging and a link marketplace. No backlink index and no keyword-volume database — the site says so plainly instead of faking them.
+
+## Pricing
+
+- Free $0 — 5 audits/mo, 10 keywords, 5 link checks/mo, 3 briefs/mo, 3 compares/mo, 10 tool checks/mo, 5 AI messages/day, 1 site.
+- Pro $9/mo or $90/yr — unlimited, 3 sites.
+- Agency $29/mo or $290/yr — Pro plus 10 sites, featured marketplace listing, priority support.
+- Business, custom — talk to sales (mailto:contact@syedsenterprises.org); assigned manually, no checkout button.
+
+Billing is live via PayPal. Guest mode works without an account; most tools need no account at all.
 
 ## Development
 
@@ -9,14 +20,18 @@ Use Node 22 or later. Run npm run check and npm test, then serve the directory w
 ## Included tools
 
 - Site audits and PageSpeed (mobile/desktop), bulk audits, health checklist.
+- Speed Score — our own 0–100 score from measurements we take ourselves (TTFB, page weight, render-blocking, compression, images, request count). It cannot measure true LCP/CLS; Google's PageSpeed result is shown alongside it.
 - Google Suggest keyword research, Bing rank observations (DuckDuckGo fallback) and difficulty estimates.
 - Link verification, broken-link checks, redirect inspection, schema detection, robots and sitemap utilities.
 - SERP/social previews, content briefs and competitor comparisons.
 - Manual revenue logging and estimates; personal listings and order records.
 - Search Console and GA4 reports through authenticated Google OAuth.
 - CSV exports and JSON export of the currently loaded workspace.
-- Workspace name, system/light/dark themes, accent color, compact density, default website and audit device.
+- Workspace name, light/dark/system themes (light by default), accent color, compact density, default website and audit device.
 - Email/password authentication and password recovery.
+- Forge Assistant — in-site AI agent. Bring your own key (CoArena, Google Gemini free tier, or any OpenAI-compatible provider) or use keyless local answers from your own saved data.
+- Landing hero audit widget — a real Health Check + Speed Score with no signup, and shareable score links (#tab=health&url=…).
+- Admin dashboard for the site owner: platform health, personal totals, PayPal plan, user counts.
 
 Marketplace records are not a public marketplace or order fulfillment system. Ad-network API credentials do not enable automatic revenue synchronization. Public fetch proxies and Bing/DuckDuckGo search can be unavailable or block requests.
 
@@ -37,12 +52,15 @@ Quotas apply to stored observations, not public client-side requests. Link obser
 
 ## Layout
 
-- index.html — structure
+- index.html — landing page (no app code)
+- app.html — app shell
 - assets/app.js, core.js, styles.css — behavior, validation, themes
-- supabase/functions — Google OAuth/reports, billing, webhook, summary sender
+- supabase/functions — Google OAuth/reports, billing, webhook, summary sender, fetch-proxy, pagespeed, ai-agent, admin-stats, status
 - database/bootstrap.sql — new-project baseline
 - database/harden-existing.sql — original-v2 upgrade
+- database/release-usage.sql — usage ledger (apply after the hardening upgrade on new installations)
 - tests — regression tests and transactional database checks
+- scripts — browser and production endpoint smoke tests
 - docs/OPERATIONS.md — configuration and release gates
 - .github/workflows/ci.yml — JavaScript and Deno checks
 
@@ -50,14 +68,12 @@ Supabase JS is pinned to 2.119.2.
 
 ## Release status
 
-Account/billing protection SQL was applied to the existing Supabase project and verified using rolled-back fixtures. Frontend changes are delivered in the pull request; merging and Pages deployment are separate steps.
+Current version: **2.11.0** (+ v2.11.x patch). Live at https://seoforge.syedsenterprises.org/ (GitHub Pages mirror still serves the same build). Deploys go straight to main; CI Verify must pass on the final commit. The account/billing protection SQL (harden-existing.sql, release-usage.sql) is applied to the hosted project and was verified using rolled-back fixtures.
 
-Paid checkout defaults to disabled. Google client secret, PayPal credentials/webhook registration, and Resend sender/scheduling require operator configuration. Never put secrets in GitHub files.
+Billing is live via PayPal (live plans, sandbox lifecycle tested end to end). Google OAuth and email (Resend SMTP) are live and verified. Provider credentials and secrets live in Supabase secrets only — never put secrets in GitHub files. Read the operations guide before changing provider configuration.
 
-This is a hardening and customization release, **not a claim that all production integrations are verified**. Read the operations guide before a paid launch.
+## v2.11.0
 
-## v2.8 release completion
-
-Adds complete paginated account exports, authoritative usage counts, integration readiness, subscription refresh, per-account API rate limits, desktop/mobile browser smoke tests and six-hourly public endpoint monitoring. Apply database/release-usage.sql after the hardening upgrade on new installations. Both SQL upgrades are already applied to the hosted project. The status function reports configuration without disclosing secret values. Live paid activation still requires verified provider configuration.
+Rebuilt landing page (real buttons, interactive showcase, honest stats, four pricing tiers, Hire Syed section), Forge Assistant with keyless local answers, Speed Score, shareable audit links, owner admin dashboard, and theme adaptivity — one accent colour drives the whole site, light by default. The v2.11.x patch fixed genuine-report defects (no measured data shown as real data, no failed fetch shown as a page title, no invented sitemap dates) and the admin user-counts query.
 
 Browser validation passes on desktop (1440px) and mobile (390px). Production endpoint smoke tests reject unauthenticated billing, Google and email requests and unsigned PayPal events. Integration configuration status is independently visible in Workspace settings.
