@@ -986,12 +986,50 @@ function agentContext(){
   bits.push("plan: " + (currentPlan||"free"));
   return "You are the Forge Assistant inside SEOForge, a free SEO toolkit. The user's saved data: " + bits.join("; ") + ". Answer SEO questions about their data and how to improve it. Never invent numbers — only use the data given here, or say you do not know.";
 }
+/* Keyless answers: questions about the user's own saved data are answered
+   right here in the browser — no key, no network, no cost, and nothing is
+   sent anywhere. Anything else still needs a key. Returns the answer, or
+   null when the question is not one the local answerer can handle. */
+function agentLocalAnswer(q){
+  const text = String(q||"").toLowerCase();
+  const has = (...words) => words.some(w => text.includes(w));
+  const hasWord = w => new RegExp("(^|[^a-z])" + w + "([^a-z]|$)").test(text);
+  const audits = S.get("audits", []);
+  const last = audits[0];
+  const kws = S.get("keywords", []);
+  const ranks = S.get("rankChecks", []).length;
+  const links = S.get("links", []).length;
+  const plan = currentPlan||"free";
+  if(has("help","what can you do","hello","hey") || text.trim()==="hi"){
+    return "No key needed for this: I can tell you about your own saved data — try 'what is my latest audit score?', 'how many keywords am I tracking?', 'how many links have I verified?', or 'what is my plan?'. For open SEO questions — how to fix something, what to do next — add your key in Settings (CoArena, or a free Gemini key) and I can answer those too.";
+  }
+  if(has("audit","pagespeed","page speed","how did","my site do") || (text.includes("score") && !text.includes("speed score"))){
+    if(!last) return "You have no saved audits yet — run a Site Audit or a Health Check first, then ask me again.";
+    return "Your latest audit of " + (last.url||"your site") + " scored PageSpeed " + (last.psi==null?"unknown":last.psi+"/100") + (last.ok==null?"":", "+last.ok+" of "+last.total+" URLs reachable") + ".";
+  }
+  if(has("keyword")){
+    if(!kws.length) return "You're not tracking any keywords yet — add one in the Keywords tab and I'll keep count here.";
+    const names = kws.slice(0,5).map(k=>k.keyword).filter(Boolean);
+    return "You're tracking " + kws.length + " keyword" + (kws.length===1?"":"s") + (names.length?": " + names.join(", ") + (kws.length>names.length?" and " + (kws.length-names.length) + " more":""):"") + ". You have " + ranks + " rank check" + (ranks===1?"":"s") + " recorded.";
+  }
+  if(has("link","backlink")){
+    return "You have " + links + " verified link" + (links===1?"":"s") + " saved." + (links?"":" Add one in the Links tab and it will show up here.");
+  }
+  if(has("plan","upgrade","limit","message") || hasWord("pro")){
+    const limit = agentCanChat();
+    return "You're on the " + plan + " plan." + (plan==="pro"?" The assistant is unlimited for you.":" The assistant gives 5 free messages a day" + (limit.left!=null?" — you have " + limit.left + " left today":"") + "; Pro ($9/month) is unlimited.");
+  }
+  if(has("speed")){
+    return "The speed score isn't saved — run a Health Check or a Site Audit to see it live. (Ask me about your audit score instead — that one I keep.)";
+  }
+  return null;
+}
 let agentHistory = [];
 function agentRender(){
   const box = $("agentMsgs");
   const limit = agentCanChat();
   $("agentLimit").textContent = currentPlan==="pro" ? "Pro — unlimited" : (limit.left + " of " + AGENT_FREE_PER_DAY + " free messages left today");
-  box.innerHTML = agentHistory.length ? agentHistory.map(m => '<div class="agent-msg ' + (m.role==="user"?"user":"ai") + '">' + esc(m.content) + '</div>').join("") : '<p class="muted">Ask about your audit results, keywords, or any SEO question. I answer from your saved data — I never invent numbers.</p>';
+  box.innerHTML = agentHistory.length ? agentHistory.map(m => '<div class="agent-msg ' + (m.role==="user"?"user":"ai") + '">' + esc(m.content) + '</div>').join("") : '<p class="muted">Ask about your audit results, keywords, or any SEO question. I answer from your saved data — I never invent numbers. No key? I can still answer questions about your own data — try “what is my latest audit score?”</p>';
   box.scrollTop = box.scrollHeight;
 }
 async function agentAsk(messages){
@@ -1007,6 +1045,13 @@ async function agentSend(){
   if(!text) return;
   const s = agentSettings();
   if(!s.key){
+    const local = agentLocalAnswer(text);
+    if(local){
+      agentHistory.push({role:"user", content:text});
+      agentHistory.push({role:"assistant", content:local});
+      input.value = "";
+      agentRender(); return;
+    }
     agentHistory.push({role:"assistant", content:"Add your AI key in Settings first — the assistant runs on your own key, so it costs the site nothing. CoArena works, or a free Gemini key from Google AI Studio."});
     agentRender(); return;
   }
