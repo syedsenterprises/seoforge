@@ -30,15 +30,21 @@ Deno.serve(async req=>{
     const now = new Date();
     const sevenDaysAgo = new Date(now.getTime()-7*24*60*60*1000).toISOString();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-    const [totalUsers, proUsers, signups7d, auditsThisMonth] = await Promise.all([
+    const [totalUsers, proUsers, agencyUsers, businessUsers, payingUsers, signups7d, auditsThisMonth] = await Promise.all([
       countRows("profiles", ""),
       countRows("profiles", "plan=eq.pro"),
+      countRows("profiles", "plan=eq.agency"),
+      countRows("profiles", "plan=eq.business"),
+      /* Paying users = ACTIVE billing_subscriptions only. An abandoned
+         APPROVAL_PENDING subscription (left by an earlier QA walkthrough)
+         never counts here. */
+      countRows("billing_subscriptions", "status=eq.ACTIVE"),
       countRows("profiles", "created_at=gte."+encodeURIComponent(sevenDaysAgo)),
       countRows("audits", "created_at=gte."+encodeURIComponent(monthStart)),
     ]);
     const subs = await db("billing_subscriptions?user_id=eq."+user.id+"&order=created_at.desc&limit=1");
     const sub = subs[0] ? {id:subs[0].subscription_id||"", status:subs[0].status||""} : null;
-    return json({totalUsers, proUsers, signups7d, auditsThisMonth, paypalPlanId:env("PAYPAL_PLAN_ID"), subscription:sub},200,origin);
+    return json({totalUsers, proUsers, agencyUsers, businessUsers, payingUsers, signups7d, auditsThisMonth, paypalPlanId:env("PAYPAL_PLAN_ID"), subscription:sub},200,origin);
   }catch(e){
     return json({error:String(e.message||e)},400,origin);
   }
