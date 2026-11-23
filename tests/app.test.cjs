@@ -9,6 +9,10 @@ function storage(){
   const data=new Map();
   return {getItem:k=>data.get(k)||null,setItem:(k,v)=>data.set(k,String(v)),removeItem:k=>data.delete(k)};
 }
+function fakeEl(){
+  const el={value:"",textContent:"",innerHTML:"",hidden:false,style:{},dataset:{},classList:{toggle(){},add(){},remove(){},contains(){return false;}},listeners:{},addEventListener(name,cb){(this.listeners[name]=this.listeners[name]||[]).push(cb);},querySelector(){return fakeEl();},querySelectorAll(){return[];},appendChild(){},remove(){},focus(){},click(){},setAttribute(){},getAttribute(){return null;},closest(){return null;}};
+  return el;
+}
 function app(search=""){
   const elements=new Map();
   for(const match of html.matchAll(/id="([^"]+)"/g)){
@@ -23,7 +27,7 @@ function app(search=""){
     history:{replaceState(){}},setTimeout(){},clearTimeout(){},
     matchMedia:()=>({matches:false,addEventListener(){}}),
     alert(){},confirm:()=>false,
-    document:{getElementById:id=>{assert.ok(elements.has(id),"missing DOM element: "+id);return elements.get(id);},querySelectorAll:()=>[],addEventListener(){},createElement:()=>({click(){},remove(){},appendChild(){}}),documentElement:{dataset:{},style:{setProperty(){}}}},
+    document:{getElementById:id=>{assert.ok(elements.has(id),"missing DOM element: "+id);return elements.get(id);},querySelectorAll:()=>[],addEventListener(){},createElement:()=>fakeEl(),documentElement:{dataset:{},style:{setProperty(){}}}},
     navigator:{},fetch:async()=>{throw Error("Unexpected network call");}
   };
   context.window=context;context.scrollTo=()=>{};
@@ -451,4 +455,71 @@ test("Placeholders: no URL placeholder reads as a pre-filled value",()=>{
   assert.doesNotMatch(html,/placeholder="https?:\/\//);
   assert.doesNotMatch(html,/placeholder="lookforit/);
   assert.match(html,/placeholder="e\.g\. https:\/\/example\.com"/);
+});
+
+/* ---------- v2.10.0: owner admin ---------- */
+test("Admin: isAdmin matches only the owner email",()=>{
+  const a=app();
+  assert.equal(a.run("isAdmin()"),false);
+  a.run('currentUser={id:"x",email:"someone@example.com"};');
+  assert.equal(a.run("isAdmin()"),false);
+  a.run('currentUser={id:"x",email:"SyedSinterprises@Gmail.com"};');
+  assert.equal(a.run("isAdmin()"),true);
+  a.run('currentUser={id:"x",email:"syedsinterprises@gmail.com"};');
+  assert.equal(a.run("isAdmin()"),true);
+  a.run("currentUser=null;");
+  assert.equal(a.run("isAdmin()"),false);
+});
+test("Admin: tool-check limits are skipped for the owner but enforced for others",()=>{
+  const a=app();
+  const m=new Date().toISOString().slice(0,7);
+  const out={innerHTML:""};
+  a.context.__out=out;
+  /* Owner: usage at the limit, but the bypass skips it. (In cloud mode S.get
+     reads S.cache, so the usage must be written there, not to LS.) */
+  a.run('currentUser={id:"x",email:"syedsinterprises@gmail.com"}; S.mode="cloud"; currentPlan="free"; S.cache.toolChecks=Array.from({length:10},()=>({date:"'+m+'-05",type:"schema",url:"https://example.com"}));');
+  assert.equal(a.run('checkToolLimit(__out)'),true);
+  assert.equal(out.innerHTML,"");
+  /* Non-owner: the same usage is enforced. */
+  a.run('currentUser={id:"o",email:"someone@example.com"}; S.cache.toolChecks=Array.from({length:10},()=>({date:"'+m+'-05",type:"schema",url:"https://example.com"}));');
+  assert.equal(a.run('checkToolLimit(__out)'),false);
+  assert.match(out.innerHTML,/Free plan limit reached/);
+});
+test("Admin: the AI assistant daily cap is lifted for the owner",()=>{
+  const a=app();
+  a.run('currentUser={id:"o",email:"someone@example.com"}; currentPlan="free"; LS.set("agentUsage",{date:todayISO(),used:5});');
+  assert.equal(a.run("agentCanChat().ok"),false);
+  a.run('currentUser={id:"x",email:"syedsinterprises@gmail.com"}; LS.set("agentUsage",{date:todayISO(),used:5});');
+  assert.equal(a.run("agentCanChat().ok"),true);
+  assert.equal(a.run("agentCanChat().left"),null);
+});
+test("Admin: plan pill, plan card and usage line read Admin for the owner",()=>{
+  const a=app();
+  a.run('currentUser={id:"x",email:"syedsinterprises@gmail.com"}; currentPlan="free";');
+  a.run("refreshAuthUI()");
+  assert.equal(a.elements.get("planPill").textContent,"Admin");
+  a.run("renderPlanCard()");
+  assert.match(a.elements.get("planCard").innerHTML,/Admin — unlimited, no restrictions/);
+  assert.match(a.run("limitNoteText()"),/Admin — unlimited/);
+  a.run('currentUser={id:"o",email:"someone@example.com"};');
+  a.run("refreshAuthUI()");
+  assert.equal(a.elements.get("planPill").textContent,"Free");
+  a.run("renderPlanCard()");
+  assert.match(a.elements.get("planCard").innerHTML,/Your plan — Free/);
+});
+test("Admin: the admin section exists only for the owner, and the deep link refuses non-owners",()=>{
+  const a=app();
+  a.run("renderAdminSection()");
+  assert.equal(a.run("adminSectionEl"),null);
+  assert.equal(a.run("adminPanelEl"),null);
+  assert.equal(a.run('parseTabHash("#tab=admin")'),"");
+  a.run('currentUser={id:"x",email:"syedsinterprises@gmail.com"};');
+  a.run("renderAdminSection()");
+  assert.notEqual(a.run("adminSectionEl"),null);
+  assert.notEqual(a.run("adminPanelEl"),null);
+  assert.equal(a.run('parseTabHash("#tab=admin")'),"admin");
+  a.run("currentUser=null;");
+  a.run("renderAdminSection()");
+  assert.equal(a.run("adminSectionEl"),null);
+  assert.equal(a.run("adminPanelEl"),null);
 });
