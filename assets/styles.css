@@ -23,14 +23,17 @@
   .plan-pill.pro{background:#2dd4bf;color:#0f172a}
   #topBanner{max-width:920px;margin:12px auto 0;padding:10px 12px;border-radius:8px;font-size:14px;cursor:pointer}
   nav{background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:10}
-  nav .tabs{max-width:920px;margin:0 auto;display:flex;gap:4px;overflow-x:auto;padding:6px 8px;-webkit-overflow-scrolling:touch}
+  nav .tabs{max-width:920px;margin:0 auto;display:flex;flex-wrap:wrap;gap:8px;align-items:stretch;padding:8px}
+  .tab-group{display:flex;flex-wrap:wrap;gap:4px;align-items:center;padding:5px 6px;border:1px solid var(--line);border-radius:10px;background:var(--bg)}
+  .tab-group-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin:0 4px 0 2px}
   nav button{flex:0 0 auto;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:999px;padding:8px 14px;font-size:14px;cursor:pointer}
+  nav button:hover{border-color:var(--teal)}
   nav button.active{background:var(--teal);border-color:var(--teal);color:#fff;font-weight:600}
   nav button.homebtn{border-style:dashed;color:var(--muted)}
   main{max-width:920px;margin:0 auto;padding:16px 12px 48px}
   section.tab{display:none}
   section.tab.active{display:block}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-bottom:14px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-bottom:14px;overflow-x:auto}
   .card h2{margin:0 0 6px;font-size:18px}
   .card h3{margin:14px 0 6px;font-size:15px}
   .muted{color:var(--muted);font-size:13px}
@@ -43,7 +46,9 @@
   .row{display:flex;gap:8px;flex-wrap:wrap}
   .row>*{flex:1 1 140px}
   button.btn{background:var(--teal);color:#fff;border:0;border-radius:8px;padding:11px 16px;font-size:15px;font-weight:600;cursor:pointer;margin-top:10px}
+  button.btn:hover{filter:brightness(1.06)}
   button.btn:disabled{opacity:.55;cursor:wait}
+  button.btn.secondary:hover{filter:none;background:#f0fdfa}
   button.btn.secondary{background:#fff;color:var(--teal);border:1px solid var(--teal)}
   button.btn.danger{background:#fff;color:var(--bad);border:1px solid var(--bad)}
   button.btn.small{padding:6px 10px;font-size:13px;margin-top:0}
@@ -116,6 +121,24 @@ html[data-theme=dark] th{background:#334155}
 html[data-density=compact] .card{padding:10px;margin-bottom:8px}
 html[data-density=compact] td,html[data-density=compact] th{padding:6px}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
+img{max-width:100%;height:auto}
+/* small screens: stack header, wrap nav groups full-width, keep tables inside cards */
+@media (max-width:560px){
+  header{padding:12px}
+  header h1{font-size:18px}
+  #authBar input{flex:1 1 100%}
+  main{padding:12px 10px 40px}
+  .hero{padding:20px 8px 4px}
+  .hero h2{font-size:23px}
+  .card{padding:14px 12px}
+  /* grouped nav is tall on phones: let it scroll away instead of hogging the viewport */
+  nav{position:static}
+  nav .tabs{gap:6px}
+  .tab-group{flex:1 1 100%}
+  .chart-row .lbl{flex-basis:110px}
+  .bar-row .lbl{flex-basis:70px}
+  .bar-row .val{flex-basis:56px}
+}
 
 html[data-theme=dark] .feature,html[data-theme=dark] .price-card,html[data-theme=dark] .listing,html[data-theme=dark] .soc-card{background:var(--card);color:var(--ink)}
 #recoveryPanel{max-width:920px;margin:16px auto}
