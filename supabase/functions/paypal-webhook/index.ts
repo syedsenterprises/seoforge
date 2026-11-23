@@ -1,6 +1,6 @@
 
 import {env,db,body,serve} from "../_shared/http.js";
-import {paypal,verifiedSubscription} from "../_shared/paypal.js";
+import {paypal,verifiedSubscription,planToTier} from "../_shared/paypal.js";
 serve(async req=>{
   const event=await body(req);
   const headers=["paypal-auth-algo","paypal-cert-url","paypal-transmission-id","paypal-transmission-sig","paypal-transmission-time"];
@@ -16,7 +16,7 @@ serve(async req=>{
   const subscription=await paypal("/v1/billing/subscriptions/"+id);
   const rows=await db("billing_subscriptions?subscription_id=eq."+id);
   if(!rows.length) throw new Error("Subscription is not bound to an account");
-  const plan=verifiedSubscription(subscription,env("PAYPAL_PLAN_ID"),rows[0].user_id);
+  const plan=verifiedSubscription(subscription,planToTier(),rows[0].user_id);
   await db("rpc/apply_billing_event","POST",{p_event_id:event.id,p_subscription_id:id,p_plan:plan,p_status:subscription.status,p_time:subscription.update_time||subscription.create_time});
   return {received:true};
 });
