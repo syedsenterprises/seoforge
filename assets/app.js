@@ -2595,6 +2595,11 @@ function b64urlDecode(s){
    that is not on bing.com passes through untouched. */
 function decodeBingUrl(href){
   if(!href) return "";
+  /* Bing's raw HTML escapes ampersands in hrefs (&amp;). new URL() must see
+     the real "&" — with "&amp;" intact, searchParams.get("u") misses (the
+     param reads as "amp;u"), the decoder returns "", and the caller falls
+     back to the cite text, which produced "https://https://…" URLs. */
+  href = String(href).replace(/&amp;/g,"&").replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&lt;/g,"<").replace(/&gt;/g,">");
   try{
     const u = new URL(href, "https://www.bing.com");
     if(u.hostname !== "www.bing.com" && u.hostname !== "bing.com") return /^https?:\/\//i.test(href) ? href : "";
@@ -2602,7 +2607,9 @@ function decodeBingUrl(href){
     if(!enc) return "";
     for(const cand of [enc, enc.slice(2)]){
       const decoded = b64urlDecode(cand);
-      if(/^https?:\/\//i.test(decoded)) return decoded;
+      if(!/^https?:\/\//i.test(decoded)) continue;
+      try{ const du = new URL(decoded); if(du.hostname && du.hostname !== "https" && du.hostname !== "http") return decoded; }
+      catch(e){ /* malformed decoded value — try the next candidate */ }
     }
     return "";
   }catch(e){ return /^https?:\/\//i.test(href) ? href : ""; }
@@ -2620,11 +2627,23 @@ function parseBingResults(html, n){
     let url = decodeBingUrl(hrefM[1]);
     if(!url){
       /* Fallback: rebuild from the <cite> display text
-         ("example.com › path › page" -> https://example.com/path/page). */
+         ("example.com › path › page" -> https://example.com/path/page).
+         Bing's cite text often already includes the scheme
+         ("https://example.com › path") and is sometimes truncated with "…" —
+         blindly prepending "https://" produced "https://https://…" URLs and
+         URLs containing "…". Strip any scheme first, reject a truncated
+         cite outright (its URL is unknowable), and validate the result has
+         a real hostname. */
       const cite = /<cite\b[^>]*>([\s\S]*?)<\/cite>/i.exec(b);
       if(cite){
         const parts = stripTags(cite[1]).split(/\s*›\s*/).map(s=>s.trim()).filter(Boolean);
-        if(parts.length) url = "https://" + parts.join("/");
+        if(parts.length && !parts.some(s=>s.includes("…"))){
+          const joined = parts.join("/").replace(/^https?:\/\//i,"");
+          try{
+            const cand = new URL("https://" + joined);
+            if(cand.hostname && cand.hostname !== "https" && cand.hostname !== "http") url = "https://" + joined;
+          }catch(e){ /* not a usable URL — leave url empty, block is skipped */ }
+        }
       }
     }
     const title = stripTags(m[2]);
@@ -2648,6 +2667,25 @@ function parseDdgResults(html, n){
   }
   return out;
 }
+/* Relevance guard for parsed SERP results: for a query with no real matches
+   Bing serves generic trending pages, query-independent (proven 24 Nov 2026:
+   "SEOForge" returned Hyundai Tucson / Tbilisi travel / KB Home, rotating per
+   request, while established keywords return real results). Presenting those
+   as the keyword's ranking pages would be a false report. At least one
+   result's title or URL must contain a significant token from the keyword.
+   Significant = lowercased, split on non-alphanumerics, 3+ chars, not a
+   question/stopword. A total mismatch means the source served trending pages,
+   not results for this keyword. */
+const SERP_STOPWORDS = ["best","top","free","how","what","why","when","where","who"];
+function serpKeywordTokens(keyword){
+  return String(keyword||"").toLowerCase().split(/[^a-z0-9]+/).filter(t=>t.length>=3 && !SERP_STOPWORDS.includes(t));
+}
+function serpResultsMatchKeyword(results, keyword){
+  const tokens = serpKeywordTokens(keyword);
+  if(!tokens.length) return true; /* nothing significant to check against */
+  const hay = results.map(r=>((r.title||"")+" "+(r.url||"")).toLowerCase()).join(" ");
+  return tokens.some(t=>hay.includes(t));
+}
 /* Multi-source top results: Bing first, DuckDuckGo as last resort. Each
    source is tried in turn; a source that returns no parseable results (e.g.
    DuckDuckGo's 202 block page) simply falls through to the next. Throws only
@@ -2659,6 +2697,7 @@ async function serpTopResults(keyword, n, timeoutMs){
     { name:"DuckDuckGo", url:"https://html.duckduckgo.com/html/?q="+q, parse:parseDdgResults }
   ];
   let lastErr = null;
+  let irrelevant = false;
   for(const s of sources){
     try{
       const res = await fetchViaProxy(s.url, timeoutMs||20000);
@@ -2666,10 +2705,19 @@ async function serpTopResults(keyword, n, timeoutMs){
          as if it were a results page. */
       if(res.status && (res.status < 200 || res.status >= 300)) throw new Error("No results could be parsed from " + s.name + " (HTTP " + res.status + ") — it may be blocking automated requests.");
       const out = s.parse(res.text, n);
-      if(out.length) return out;
+      if(out.length){
+        if(serpResultsMatchKeyword(out, keyword)) return out;
+        /* Results parsed but about something else entirely (Bing's trending
+           fallback for queries with no real matches) — never present them as
+           this keyword's rankings. Try the next source; if none matches,
+           the throw below says so plainly. */
+        irrelevant = true;
+        continue;
+      }
       lastErr = new Error("No results could be parsed from " + s.name + " — it may be blocking automated requests.");
     }catch(e){ lastErr = e; }
   }
+  if(irrelevant) throw new Error("No verifiable ranking data for \"" + keyword + "\" — the search results returned do not relate to this keyword.");
   throw lastErr || new Error("Search results unavailable or blocked; no ranking can be inferred.");
 }
 
@@ -3168,9 +3216,14 @@ async function runBrief(){
     const headings = [];
     pages.forEach(p => p.h2s.forEach(h => { const t = h.toLowerCase(); if(t && !headings.some(x => x.toLowerCase()===t)) headings.push(h); }));
     const brief = { keyword: kw, targetWordCount: targetWords, headings: headings.slice(0,12), questions: questions.slice(0,10), competitors: pages.map(p => ({ url:p.url, h1:p.h1||null, serpTitle:p.title||null, words:p.words, error:p.error||null })) };
-    const saved = await recordBrief(kw, brief);
+    /* An empty brief (every top page unreadable, no headings, no questions)
+       is a failed brief, not a saved one — recording it as "0 headings ·
+       0 questions" pretends a real brief exists. Don't save it. */
+    const emptyBrief = pages.every(p=>p.words==null) && !brief.headings.length && !brief.questions.length;
+    const saved = emptyBrief ? false : await recordBrief(kw, brief);
     out.innerHTML = briefHtml(brief) + '<div class="row"><button class="btn secondary" id="brTxtBtn">Export brief (.txt)</button></div>'
-      + (saved ? '<p class="muted">Saved to your briefs.</p>' : '<p class="warn">This brief could not be saved to your account (cloud table missing or offline) — the text above is still yours to copy.</p>');
+      + (emptyBrief ? '<p class="warn">Brief could not be built — the top pages could not be read. Nothing was saved.</p>'
+        : saved ? '<p class="muted">Saved to your briefs.</p>' : '<p class="warn">This brief could not be saved to your account (cloud table missing or offline) — the text above is still yours to copy.</p>');
     $("brTxtBtn").addEventListener("click", () => downloadFile("seoforge-brief-" + kw.replace(/[^a-z0-9]+/gi,"-").toLowerCase() + ".txt", briefText(brief), "text/plain"));
     prog.textContent = "";
     renderBriefs(); renderLimitNotes();
