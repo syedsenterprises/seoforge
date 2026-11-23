@@ -39,7 +39,7 @@ create or replace function public.apply_billing_event(p_event_id text,p_subscrip
 returns void language plpgsql security invoker set search_path='' as $$
 declare v_user uuid; v_observed timestamptz;
 begin
-  if p_plan not in ('free','pro') or p_time is null then raise exception 'Invalid billing event'; end if;
+  if p_plan not in ('free','pro','agency','business') or p_time is null then raise exception 'Invalid billing event'; end if;
   select user_id,observed_at into v_user,v_observed from public.billing_subscriptions where subscription_id=p_subscription_id for update;
   if v_user is null then raise exception 'Unknown subscription'; end if;
   insert into public.billing_events(event_id,subscription_id) values(p_event_id,p_subscription_id) on conflict do nothing;
