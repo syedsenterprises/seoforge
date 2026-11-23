@@ -12,13 +12,13 @@ const PLAN_LIMITS = { auditsPerMonth: 5, keywordsTotal: 10, linkChecksPerMonth: 
 /* Google OAuth (Search Console + Analytics, read-only). The real client ID is
    being created in Google Cloud Console — paste it below when it exists.
    This EXACT redirect URI must be registered in the OAuth client:
-   https://syedsenterprises.github.io/seoforge/
+   https://seoforge.syedsenterprises.org/
    Scopes: webmasters.readonly + analytics.readonly. The app runs in Google
    test mode (up to 100 users) until OAuth verification — see README.
    The client SECRET is never in this file: it lives as a Supabase secret for
    the google-oauth edge function (see functions/google-oauth/). */
 const GOOGLE_CLIENT_ID = "158848063786-cmdknljpjj6po7j2uc4r26dp31qm4nek.apps.googleusercontent.com"; /* Google Cloud OAuth client — project "SEOForge" (seoforge-515414), live 21 Nov 2026 */
-const GOOGLE_REDIRECT_URI = "https://syedsenterprises.github.io/seoforge/";
+const GOOGLE_REDIRECT_URI = "https://seoforge.syedsenterprises.org/";
 const GOOGLE_SCOPES = "https://www.googleapis.com/auth/webmasters.readonly https://www.googleapis.com/auth/analytics.readonly";
 const GOOGLE_OAUTH_FN = SUPABASE_URL + "/functions/v1/google-oauth";
 const ALERT_FN = SUPABASE_URL + "/functions/v1/send-alert";
@@ -1273,7 +1273,7 @@ async function copyText(t){
 async function shareAudit(kind){
   if(!lastAudit){ alert("Run an audit first, then share it."); return; }
   const text = auditShareText(lastAudit);
-  const pageUrl = "https://syedsenterprises.github.io/seoforge/";
+  const pageUrl = "https://seoforge.syedsenterprises.org/";
   if(kind === "web"){
     if(navigator.share){
       try{ await navigator.share({ title: "SEOForge audit — " + lastAudit.site, text, url: pageUrl }); return; }
