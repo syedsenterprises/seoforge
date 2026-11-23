@@ -42,5 +42,13 @@ serve(async req=>{
   const totalMs = Math.round(performance.now() - t0);
   const bytes = buf.byteLength;
   const text = new TextDecoder().decode(buf).slice(0, MAX_BYTES);
-  return {status:res.status, ok:res.ok, text, ttfbMs, totalMs, bytes, headers:{encoding:res.headers.get("content-encoding")||"", cache:res.headers.get("cache-control")||"", server:res.headers.get("server")||"", type:res.headers.get("content-type")||""}};
+  /* Compression: the runtime decompresses transparently and strips the
+     content-encoding header, so it can never be read from headers. Instead
+     compare the wire size (content-length, when the server sends one) with
+     the decompressed size — smaller wire size means the transfer was
+     compressed. Null when the server sends no content length. */
+  const clRaw = res.headers.get("content-length");
+  const cl = clRaw ? parseInt(clRaw, 10) : null;
+  const compressed = (cl!=null && !isNaN(cl)) ? cl < bytes : null;
+  return {status:res.status, ok:res.ok, text, ttfbMs, totalMs, bytes, compressed, headers:{encoding:res.headers.get("content-encoding")||"", cache:res.headers.get("cache-control")||"", server:res.headers.get("server")||"", type:res.headers.get("content-type")||""}};
 });
