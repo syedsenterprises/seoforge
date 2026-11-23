@@ -221,7 +221,7 @@ html[data-theme=dark] .skel i{background:#334155}
 }
 /* Phones: drawer + bottom tab bar; CTAs stack full-width. */
 @media (max-width:560px){
-  #bottomNav{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:55;background:var(--card);border-top:1px solid var(--line);padding:6px 4px calc(6px + env(safe-area-inset-bottom));gap:4px}
+  #bottomNav{display:flex;position:fixed;left:0;right:0;top:auto;bottom:0;z-index:55;background:var(--card);border-top:1px solid var(--line);padding:6px 4px calc(6px + env(safe-area-inset-bottom));gap:4px}
   #bottomNav button{flex:1;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:9px 2px;font-size:12px;cursor:pointer}
   #bottomNav button.active{background:var(--teal);border-color:var(--teal);color:#fff;font-weight:600}
   body{padding-bottom:56px}
