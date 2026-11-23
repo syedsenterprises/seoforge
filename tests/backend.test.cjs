@@ -111,7 +111,9 @@ test("Admin stats: owner JWT gets counts, non-owner gets 403, missing JWT gets 4
     }
     if(String(url).includes("/rest/v1/audits")) return {ok:true,headers:{get:n=>n.toLowerCase()==="content-range"?"0-0/17":null}};
     if(String(url).includes("/rest/v1/billing_subscriptions")){
-      if(String(url).includes("status=eq.ACTIVE")) return {ok:true,headers:{get:n=>n.toLowerCase()==="content-range"?"0-0/4":null}};
+      /* Paying users are counted via db(), not countRows(): the db() path
+         returns rows, so the mock returns 4 ACTIVE rows here. */
+      if(String(url).includes("status=eq.ACTIVE")) return {ok:true,json:async()=>([{user_id:"u1"},{user_id:"u2"},{user_id:"u3"},{user_id:"u4"}])};
       return {ok:true,json:async()=>([{subscription_id:"I-ABC",status:"ACTIVE"}])};
     }
     throw Error("unexpected fetch "+url);
@@ -141,15 +143,19 @@ test("Admin stats: owner JWT gets counts, non-owner gets 403, missing JWT gets 4
 });
 
 test("Admin stats: owner call works with the platform sb_secret_ key (no Bearer to PostgREST)",async()=>{
-  /* Regression (live 23 Nov 2026): the owner call returned 400 although the
-     JWT authenticated fine. Cause: countRows() sent "Authorization: Bearer
-     sb_secret_…" to PostgREST, and a new-style secret key is not a JWT, so
-     every count 401'd. The fix sends the secret as apikey only. This test
-     reproduces the live shape — 1 free user, 0 paid — with ONLY the
-     platform-provided SUPABASE_SECRET_KEYS set (no legacy service-role key)
-     and asserts no /rest/v1/ request carries an Authorization header. */
+  /* The owner call must authenticate with the JWT and count through the
+     platform-provided SUPABASE_SECRET_KEYS only (no legacy service-role
+     key), sending the secret as apikey and never as a Bearer token — a
+     new-style secret key is not a JWT. This test reproduces the live shape
+     — 1 free user, 0 paid. (An earlier comment here blamed the Bearer
+     header for the live 400s; that was wrong. The live 400s were the
+     billing_subscriptions count: first select=id on a table with no `id`
+     column, then the raw countRows fetch itself on that one table — the
+     fix counts paying users via db() instead. The Bearer rule below still
+     stands and matches db().) */
   const restAuth=[];
   const restUrls=[];
+  const restPrefer=[];
   const fetchMock=async(url,options)=>{
     const auth=(options&&options.headers&&options.headers.Authorization)||"";
     if(String(url).includes("/auth/v1/user")){
@@ -159,10 +165,13 @@ test("Admin stats: owner call works with the platform sb_secret_ key (no Bearer 
     if(String(url).includes("/rest/v1/")){
       restAuth.push(auth);
       restUrls.push(String(url));
+      restPrefer.push((options.headers||{}).Prefer||"");
       assert.equal((options.headers||{}).apikey,"sb_secret_test","secret key must travel as apikey");
       const u=String(url);
-      const total=u.includes("plan=eq.pro")||u.includes("plan=eq.agency")||u.includes("plan=eq.business")?"0-0/0":u.includes("created_at=gte")?"0-0/0":u.includes("/audits")?"0-0/0":u.includes("status=eq.ACTIVE")?"0-0/0":"0-0/1";
-      if(u.includes("billing_subscriptions") && !u.includes("status=eq")) return {ok:true,json:async()=>([])};
+      const total=u.includes("plan=eq.pro")||u.includes("plan=eq.agency")||u.includes("plan=eq.business")?"0-0/0":u.includes("created_at=gte")?"0-0/0":u.includes("/audits")?"0-0/0":"0-0/1";
+      /* Paying users are counted via db() (rows, not a count header): every
+         billing_subscriptions call returns an array, 0 rows here. */
+      if(u.includes("billing_subscriptions")) return {ok:true,json:async()=>([])};
       return {ok:true,headers:{get:n=>n.toLowerCase()==="content-range"?total:null}};
     }
     throw Error("unexpected fetch "+url);
@@ -186,10 +195,15 @@ test("Admin stats: owner call works with the platform sb_secret_ key (no Bearer 
   assert.ok(restAuth.every(a=>!a),"no PostgREST call may carry an Authorization header, got "+JSON.stringify(restAuth));
   /* Regression (live 23–24 Nov 2026): countRows() selected `id`, but
      billing_subscriptions has no `id` column (keyed by user_id), so
-     PostgREST 400d the paying-users count and the whole panel failed. */
+     PostgREST 400d the paying-users count and the whole panel failed. The
+     fix (00:53 IST 24 Nov) counts paying users via db() instead: the raw
+     countRows fetch (Prefer: count=exact) still fails live on this one
+     table although the query shape is valid and db() reads the same table
+     fine (the PayPal webhook does it on every event). */
   assert.ok(restUrls.length>0,"the counts must actually hit PostgREST");
-  assert.ok(restUrls.filter(u=>u.includes("select=")).every(u=>u.includes("select=*")),"every count query must select *, got "+JSON.stringify(restUrls));
+  assert.ok(restUrls.filter(u=>u.includes("select=") && !u.includes("billing_subscriptions")).every(u=>u.includes("select=*")),"every countRows query must select *, got "+JSON.stringify(restUrls));
   assert.ok(!restUrls.some(u=>u.includes("select=id")),"no count may select a named id column, got "+JSON.stringify(restUrls));
+  assert.ok(!restUrls.some((u,i)=>u.includes("billing_subscriptions") && restPrefer[i]==="count=exact"),"paying users must be counted via db(), never with Prefer: count=exact, got "+JSON.stringify(restUrls));
 });
 
 /* ---------- v2.11.0 round 3: fetch-proxy / ai-agent SSRF + redirect fixes ---------- */
