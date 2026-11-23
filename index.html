@@ -5,6 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SEOForge by Syeds Enterprises — SEO, Ads &amp; Links in One Place</title>
 <meta name="description" content="SEOForge v2.8: site audit, keyword explorer, rank tracking, link checks, SERP preview, broken-link and redirect checks, schema detector, robots/sitemap tools, content briefs, competitor compare, Search Console &amp; Analytics, ad revenue hub and link marketplace. Free plan or Pro $9/month. Free data sources only, no invented numbers.">
+<link rel="icon" href="./logo.png" type="image/png">
+<link rel="canonical" href="https://seoforge.syedsenterprises.org/">
+<meta property="og:title" content="SEOForge by Syeds Enterprises — SEO, Ads &amp; Links in One Place">
+<meta property="og:description" content="Site audit, keyword explorer, rank tracking, link checks, SERP preview, broken-link and redirect checks, schema detector, robots/sitemap tools, content briefs, competitor compare, Search Console &amp; Analytics, ad revenue hub and link marketplace. Free plan or Pro $9/month.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://seoforge.syedsenterprises.org/">
+<meta property="og:image" content="https://seoforge.syedsenterprises.org/logo.png">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="SEOForge by Syeds Enterprises — SEO, Ads &amp; Links in One Place">
+<meta name="twitter:description" content="Site audit, keyword explorer, rank tracking, link checks, SERP preview, content briefs, Search Console &amp; Analytics, ad revenue hub and link marketplace. Free plan or Pro $9/month.">
+<meta name="twitter:image" content="https://seoforge.syedsenterprises.org/logo.png">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.2"></script>
 <link rel="stylesheet" href="./assets/styles.css">
 </head>
@@ -120,26 +131,40 @@
 <!-- ============ APP ============ -->
 <div id="appView" hidden>
 <nav aria-label="Tools"><div class="tabs" id="tabs">
-<button data-tab="preferences">Workspace settings</button>
   <button id="homeBtn" class="homebtn" hidden>← Home</button>
+  <div class="tab-group"><span class="tab-group-label">Audit</span>
   <button data-tab="dashboard" class="active">Dashboard</button>
   <button data-tab="audit">Site Audit</button>
-  <button data-tab="keywords">Keyword Explorer</button>
-  <button data-tab="rank">Rank Tracker</button>
-  <button data-tab="links">Link Verifier</button>
-  <button data-tab="ads">Ad Revenue</button>
-  <button data-tab="market">Marketplace</button>
-  <button data-tab="gsc">Search Console</button>
-  <button data-tab="serp">SERP Preview</button>
-  <button data-tab="broken">Broken Links</button>
-  <button data-tab="redirect">Redirects</button>
-  <button data-tab="schema">Schema</button>
-  <button data-tab="robots">Robots &amp; Sitemap</button>
-  <button data-tab="brief">Content Briefs</button>
-  <button data-tab="compete">Competitors</button>
-  <button data-tab="estimator">Revenue Estimator</button>
   <button data-tab="health">Health Check</button>
   <button data-tab="bulk">Bulk Audit</button>
+  </div>
+  <div class="tab-group"><span class="tab-group-label">Keywords</span>
+  <button data-tab="keywords">Keyword Explorer</button>
+  <button data-tab="rank">Rank Tracker</button>
+  <button data-tab="compete">Competitors</button>
+  </div>
+  <div class="tab-group"><span class="tab-group-label">Links</span>
+  <button data-tab="links">Link Verifier</button>
+  <button data-tab="broken">Broken Links</button>
+  <button data-tab="redirect">Redirects</button>
+  </div>
+  <div class="tab-group"><span class="tab-group-label">Content</span>
+  <button data-tab="brief">Content Briefs</button>
+  <button data-tab="serp">SERP Preview</button>
+  <button data-tab="schema">Schema</button>
+  <button data-tab="robots">Robots &amp; Sitemap</button>
+  </div>
+  <div class="tab-group"><span class="tab-group-label">Google</span>
+  <button data-tab="gsc">Search Console</button>
+  </div>
+  <div class="tab-group"><span class="tab-group-label">Money</span>
+  <button data-tab="ads">Ad Revenue</button>
+  <button data-tab="market">Marketplace</button>
+  <button data-tab="estimator">Revenue Estimator</button>
+  </div>
+  <div class="tab-group"><span class="tab-group-label">Settings</span>
+  <button data-tab="preferences">Workspace settings</button>
+  </div>
 </div></nav>
 <main>
 
@@ -617,7 +642,7 @@
 
 </main>
 <footer>
-  SEOForge v2.8 — by Syeds Enterprises. Signed-in users' data is stored in their Supabase account; logged-out use stays in this browser (localStorage). Integrations: Google Search Console + Analytics (read-only OAuth, tokens in Supabase), PayPal subscriptions (verified by webhook), email alerts (opt-in). Free data sources only: Google PageSpeed Insights, Google Suggest, DuckDuckGo HTML results, public CORS proxies. No backlink index is faked; no search volume is invented. <a href="./privacy.html">Privacy Policy</a>
+  SEOForge v2.8 — by Syeds Enterprises. Signed-in users' data is stored in their Supabase account; logged-out use stays in this browser (localStorage). Integrations: Google Search Console + Analytics (read-only OAuth, tokens in Supabase), PayPal subscriptions (verified by webhook), email alerts (opt-in). Free data sources only: Google PageSpeed Insights, Google Suggest, DuckDuckGo HTML results, public CORS proxies. No backlink index is faked; no search volume is invented. <a href="./privacy.html">Privacy Policy</a> · <a href="./terms.html">Terms of Service</a>
 </footer>
 </div>
 
