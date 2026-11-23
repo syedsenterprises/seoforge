@@ -231,3 +231,103 @@ html[data-theme=dark] .skel i{background:#334155}
   #cpOut table td:first-child,#cpOut table th:first-child{min-width:120px}
 }
 html[data-theme=dark] #sidebar,html[data-theme=dark] #bottomNav,html[data-theme=dark] #bottomNav button{background:var(--card);color:var(--ink)}
+
+/* ================= v2.11.0: sweep fixes + landing system ================= */
+/* #3 — signed-in header stays one row at desktop: the email truncates with an
+   ellipsis instead of wrapping the account cluster onto a second line. */
+#authUserLine{flex-wrap:nowrap}
+#authUserEmail{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (max-width:560px){ #authUserEmail{max-width:140px} }
+/* Button discipline: actions are <button>, navigation is <a> — but a link
+   that IS the call to action must look like a button. a.btn carries the same
+   treatment as button.btn so the landing CTAs render as real buttons. */
+a.btn{display:inline-block;background:var(--teal);color:#fff;border:0;border-radius:8px;padding:11px 16px;font-size:15px;font-weight:600;cursor:pointer;margin-top:10px;text-decoration:none;text-align:center}
+a.btn:hover{filter:brightness(1.06)}
+a.btn.secondary{background:#fff;color:var(--teal);border:1px solid var(--teal)}
+a.btn.secondary:hover{filter:none;background:#f0fdfa}
+a.btn.small{padding:6px 10px;font-size:13px;margin-top:0}
+.btn-ghost{background:transparent;color:var(--teal);border:1px solid transparent;font-weight:600;text-decoration:underline}
+a.btn-ghost{display:inline-block;background:transparent;color:var(--teal);border:1px solid transparent;border-radius:8px;padding:11px 16px;font-size:15px;font-weight:600;cursor:pointer;margin-top:10px;text-decoration:underline;text-align:center}
+/* #4/#5 — the footer now lives inside <main> (end of the content column), so
+   it sits in the flow: visible at the bottom of the viewport on short pages,
+   never clipped by the 100vh sidebar shell. */
+#appShell footer{max-width:none;margin:24px 0 0;padding:0 0 16px}
+/* App-wide presentation pass: every tab's lead card gets the page-head
+   treatment — a larger title and a teal top edge, same system everywhere. */
+.page-head{border-top:3px solid var(--teal)}
+.page-head h2{font-size:22px}
+/* #13 — long URLs in history entries wrap instead of being cut. */
+.listing b{overflow-wrap:anywhere}
+/* Score ring next to its numbers (PageSpeed block). */
+.score-flex{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+/* ---- Landing (index.html only): Semrush-style structure, our own words. ---- */
+.cta{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin:18px 0}
+.landing-header{position:sticky;top:0;z-index:20}
+.landing-header .wrap{max-width:1080px;display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:8px;color:#fff;text-decoration:none;font-size:20px;font-weight:800;letter-spacing:.2px;white-space:nowrap}
+.brand img{width:32px;height:32px;border-radius:8px}
+.brand span{color:#2dd4bf}
+.landing-nav{display:flex;gap:4px;flex-wrap:wrap;align-items:center;flex:1 1 auto}
+.landing-nav a{color:#cbd5e1;text-decoration:none;font-size:14px;font-weight:600;padding:8px 10px;border-radius:8px}
+.landing-nav a:hover{color:#fff;background:#1e293b}
+.landing-auth{display:flex;gap:8px;align-items:center;flex:0 0 auto}
+.landing-auth a.btn{margin-top:0;padding:9px 14px}
+.landing-auth a.btn.secondary{background:transparent;color:#cbd5e1;border-color:#475569}
+.landing-auth a.btn.secondary:hover{background:#1e293b}
+.landing-main{max-width:1080px}
+.showcase{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:18px;margin:18px 0}
+.showcase-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.showcase-tabs button{border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:999px;padding:8px 14px;font-size:14px;cursor:pointer}
+.showcase-tabs button.active{background:var(--teal);border-color:var(--teal);color:#fff;font-weight:600}
+.showcase-panel{display:none}
+.showcase-panel.active{display:block}
+.showcase-grid{display:grid;grid-template-columns:220px 1fr;gap:18px;align-items:start}
+.sample-tag{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:700;background:#fef3c7;color:#78350f}
+.stats-band{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin:18px 0}
+.stats-band .stat{text-align:left}
+.stats-band .stat b{font-size:26px}
+.cap-row{display:grid;grid-template-columns:1fr auto;gap:14px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin:12px 0}
+.cap-row h3{margin:0 0 4px;font-size:17px}
+.cap-row p{margin:0;font-size:14px;color:var(--muted)}
+.cap-row .btn,.cap-row a.btn{margin-top:0;white-space:nowrap}
+.blog-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:12px 0}
+.blog-card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:16px}
+.blog-card h3{margin:0 0 6px;font-size:16px}
+.blog-card h3 a{color:var(--ink);text-decoration:none}
+.blog-card h3 a:hover{color:var(--teal);text-decoration:underline}
+.blog-card p{font-size:13px;color:var(--muted);margin:0 0 10px}
+.landing-footer{max-width:1080px;margin:0 auto;padding:24px 12px 32px;color:var(--muted);font-size:13px}
+.footer-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:16px;margin-bottom:16px}
+.footer-cols h4{margin:0 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.6px;color:var(--ink)}
+.footer-cols ul{list-style:none;margin:0;padding:0}
+.footer-cols li{margin:5px 0}
+.footer-cols a{color:var(--muted);text-decoration:none}
+.footer-cols a:hover{color:var(--teal);text-decoration:underline}
+.feature svg{width:28px;height:28px;margin-bottom:8px;fill:none;stroke:var(--teal);stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.why-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:12px 0}
+.why-card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:16px}
+.why-card h3{margin:0 0 6px;font-size:16px}
+.why-card p{margin:0;font-size:14px;color:var(--muted)}
+.why-card .price-big{font-size:22px;font-weight:800;color:var(--teal-dark)}
+.honest-gap{background:#fffbeb;border:1px solid #fcd34d;border-radius:var(--radius);padding:14px 16px;margin:12px 0;font-size:14px}
+.hire-card{background:#0f172a;color:#fff;border-radius:var(--radius);padding:20px;margin:12px 0}
+.hire-card h3{color:#fff;margin:0 0 6px}
+.hire-card p{color:#cbd5e1;font-size:14px}
+.hire-card a.btn{margin-top:10px}
+.price-toggle{display:flex;gap:8px;justify-content:center;margin:12px 0}
+.price-toggle button{border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:999px;padding:8px 16px;font-size:14px;cursor:pointer}
+.price-toggle button.active{background:var(--teal);border-color:var(--teal);color:#fff;font-weight:600}
+.price-card.business{border-style:dashed}
+.try-box{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+.try-box input{flex:1 1 200px}
+.try-box .btn{margin-top:0}
+@media (max-width:560px){
+  .showcase-grid{grid-template-columns:1fr}
+  .cap-row{grid-template-columns:1fr}
+  .landing-header .wrap{gap:8px}
+  .landing-nav{order:3;flex-basis:100%}
+  #authUserEmail{max-width:140px}
+}
+html[data-theme=dark] .showcase,html[data-theme=dark] .cap-row,html[data-theme=dark] .blog-card,html[data-theme=dark] .why-card,html[data-theme=dark] .showcase-tabs button,html[data-theme=dark] .price-toggle button{background:var(--card);color:var(--ink)}
+html[data-theme=dark] .honest-gap{background:#451a03;color:#fde68a;border-color:#78350f}
+html[data-theme=dark] .footer-cols h4{color:var(--ink)}
