@@ -5,7 +5,9 @@ import {body,serve} from "../_shared/http.js";
    No sign-in required (the tools work logged out too); the shared serve()
    helper enforces the app-origin allowlist. Guards: http(s) only, no
    credentials in the URL, private/loopback/link-local targets blocked,
-   20s timeout, 2 MB response cap. */
+   20s timeout, 2 MB response cap. It also measures the fetch (time to first
+   byte, total time, exact byte size, compression/cache headers) so the app can
+   compute its own SEOForge Speed Score without Google's PageSpeed API. */
 const MAX_BYTES = 2000000;
 function blockedTarget(u){
   if(u.protocol!=="http:" && u.protocol!=="https:") return "Only http and https URLs can be checked";
@@ -30,10 +32,15 @@ serve(async req=>{
   try{ u = new URL(raw); }catch{ throw new Error("Enter a valid URL"); }
   const blocked = blockedTarget(u);
   if(blocked) throw new Error(blocked);
+  const t0 = performance.now();
   let res;
   try{
     res = await fetch(u.href, {signal:AbortSignal.timeout(20000), headers:{"User-Agent":"SEOForge fetch-proxy (https://seoforge.syedsenterprises.org/)"}, redirect:"follow"});
   }catch(e){ throw new Error("Could not fetch the URL ("+((e&&e.name==="TimeoutError")?"timed out":"network error")+"). The site may be down or blocking automated requests."); }
-  const text = (await res.text()).slice(0, MAX_BYTES);
-  return {status:res.status, ok:res.ok, text};
+  const ttfbMs = Math.round(performance.now() - t0);
+  const buf = await res.arrayBuffer();
+  const totalMs = Math.round(performance.now() - t0);
+  const bytes = buf.byteLength;
+  const text = new TextDecoder().decode(buf).slice(0, MAX_BYTES);
+  return {status:res.status, ok:res.ok, text, ttfbMs, totalMs, bytes, headers:{encoding:res.headers.get("content-encoding")||"", cache:res.headers.get("cache-control")||"", server:res.headers.get("server")||"", type:res.headers.get("content-type")||""}};
 });
