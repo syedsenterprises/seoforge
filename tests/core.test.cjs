@@ -13,7 +13,7 @@ test("CSV cells neutralize spreadsheet formulas and quote content",()=>{
   assert.equal(core.csvCell(null),'""');
 });
 test("Preferences validate arbitrary imported or stored values",()=>{
-  assert.deepEqual(core.validatePreferences({theme:"evil",accent:"red;display:none",density:"broken",defaultSite:"javascript:x",brand:"x".repeat(100)}),{theme:"system",accent:"#0f766e",density:"comfortable",brand:"x".repeat(60),defaultSite:"",strategy:"mobile"});
+  assert.deepEqual(core.validatePreferences({theme:"evil",accent:"red;display:none",density:"broken",defaultSite:"javascript:x",brand:"x".repeat(100)}),{theme:"light",accent:"#0f766e",density:"comfortable",brand:"x".repeat(60),defaultSite:"",strategy:"mobile"});
 });
 test("Accent: resolveAccent validates, lowercases and falls back to default teal",()=>{
   assert.equal(core.resolveAccent("#7c3aed"),"#7c3aed");
@@ -85,10 +85,20 @@ test("Accent: applyAccent writes both properties on the root and returns the res
   assert.equal(core.applyAccent(null,"#7c3aed"),"#7c3aed"); /* no root: no throw */
   assert.equal(core.applyAccent({},"#7c3aed"),"#7c3aed"); /* no style object: no throw */
 });
+test("Theme: the default is light, an explicit pick is kept",()=>{
+  /* No stored theme (and no stored prefs at all) means light — the site must
+     never follow a dark OS into a dark first paint. An explicit dark or
+     system pick survives validation untouched. */
+  assert.equal(core.validatePreferences({}).theme,"light");
+  assert.equal(core.validatePreferences({theme:undefined}).theme,"light");
+  assert.equal(core.validatePreferences({theme:"dark"}).theme,"dark");
+  assert.equal(core.validatePreferences({theme:"system"}).theme,"system");
+  assert.equal(core.validatePreferences({theme:"light"}).theme,"light");
+});
 test("Accent: a stored accent survives the validate/store round-trip (persistence)",()=>{
   const stored=JSON.stringify(core.validatePreferences({accent:"#7c3aed"}));
   assert.equal(core.validatePreferences(JSON.parse(stored)).accent,"#7c3aed");
-  assert.equal(core.validatePreferences(JSON.parse(stored)).theme,"system");
+  assert.equal(core.validatePreferences(JSON.parse(stored)).theme,"light");
   assert.equal(core.validatePreferences({accent:"red"}).accent,"#0f766e");
 });
 
