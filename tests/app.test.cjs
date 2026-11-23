@@ -168,3 +168,31 @@ test("Forge Assistant keyless mode: no saved data says so plainly",()=>{
   assert.match(a.run('agentLocalAnswer("what is my latest audit score?")'),/no saved audits/);
   assert.match(a.run('agentLocalAnswer("how many keywords?")'),/not tracking any keywords/);
 });
+
+test("Auth: sign-up with an already-registered email says so instead of 'Account created'",async()=>{
+  const a=app();
+  a.run('cloudAvailable=true; sb={auth:{signUp:async()=>({data:{user:{identities:[]}},error:null})}};');
+  a.elements.get("authEmail").value="someone@example.com";
+  a.elements.get("authPass").value="a-very-long-password";
+  await a.run("doSignUp()");
+  assert.match(a.elements.get("authMsg").textContent,/already exists/);
+  assert.match(a.elements.get("authMsg").textContent,/signing in instead/);
+});
+test("Auth: sign-in with an unconfirmed email offers to resend the confirmation",async()=>{
+  const a=app();
+  a.run('cloudAvailable=true; sb={auth:{signInWithPassword:async()=>({data:{},error:{message:"Email not confirmed"}}),resend:async()=>({error:null})}};');
+  a.elements.get("authEmail").value="someone@example.com";
+  a.elements.get("authPass").value="a-very-long-password";
+  a.run('$("resendBtn").hidden=true;');
+  await a.run("doSignIn()");
+  assert.match(a.elements.get("authMsg").textContent,/isn't confirmed yet/);
+  assert.equal(a.elements.get("resendBtn").hidden,false);
+  await a.run("doResendConfirmation()");
+  assert.match(a.elements.get("authMsg").textContent,/Confirmation email sent/);
+});
+test("Auth: Google sign-in calls Supabase OAuth with the Google provider",async()=>{
+  const a=app();
+  a.run('cloudAvailable=true; sb={auth:{signInWithOAuth:async(args)=>{globalThis.__oauthArgs=args;return{error:null}}}};');
+  await a.run("doGoogleSignIn()");
+  assert.equal(a.run("globalThis.__oauthArgs.provider"),"google");
+});
