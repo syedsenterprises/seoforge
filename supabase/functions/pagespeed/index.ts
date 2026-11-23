@@ -22,7 +22,7 @@ serve(async req=>{
   if(u.username || u.password) throw new Error("URLs with credentials are not allowed");
   const key = Deno.env.get("PAGE_SPEED_API_KEY") || "";
   if(!key) throw new Error("PageSpeed key is not configured on the server");
-  const api = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=" + encodeURIComponent(u.href) + "&strategy=" + strategy + "&key=" + encodeURIComponent(key);
+  const api = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=" + encodeURIComponent(u.href) + "&strategy=" + strategy + "&category=performance&category=seo&key=" + encodeURIComponent(key);
   let res;
   try{
     res = await fetch(api, {signal:AbortSignal.timeout(100000)});
