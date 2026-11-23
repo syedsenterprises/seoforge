@@ -4,17 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SEOForge by Syeds Enterprises — SEO, Ads &amp; Links in One Place</title>
-<meta name="description" content="SEOForge: site audit, keyword explorer, rank tracking, link checks, SERP preview, broken-link and redirect checks, schema detector, robots/sitemap tools, content briefs, competitor compare, Search Console &amp; Analytics, ad revenue hub, link marketplace and an in-site AI assistant (your own key). Free plan or Pro $9/month. Free data sources only, no invented numbers.">
+<meta name="description" content="SEOForge: free SEO audit, keyword explorer, rank tracking, link checks, SERP preview, broken-link and redirect checks, schema detector, robots/sitemap tools, content briefs, competitor compare, Search Console &amp; Analytics, ad revenue hub, link marketplace and an in-site AI assistant (your own key). Free plan, Pro $9/month, Agency $29/month, or custom Business. Free data sources only, no invented numbers.">
 <link rel="icon" href="./logo.png" type="image/png">
 <link rel="canonical" href="https://seoforge.syedsenterprises.org/">
 <meta property="og:title" content="SEOForge by Syeds Enterprises — SEO, Ads &amp; Links in One Place">
-<meta property="og:description" content="Site audit, keyword explorer, rank tracking, link checks, SERP preview, broken-link and redirect checks, schema detector, robots/sitemap tools, content briefs, competitor compare, Search Console &amp; Analytics, ad revenue hub and link marketplace. Free plan or Pro $9/month.">
+<meta property="og:description" content="Free SEO audit, keyword explorer, rank tracking, link checks, content briefs, Search Console &amp; Analytics, ad revenue hub and link marketplace. Free plan, Pro $9/month, Agency $29/month.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://seoforge.syedsenterprises.org/">
 <meta property="og:image" content="https://seoforge.syedsenterprises.org/logo.png">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="SEOForge by Syeds Enterprises — SEO, Ads &amp; Links in One Place">
-<meta name="twitter:description" content="Site audit, keyword explorer, rank tracking, link checks, SERP preview, content briefs, Search Console &amp; Analytics, ad revenue hub and link marketplace. Free plan or Pro $9/month.">
+<meta name="twitter:description" content="Free SEO audit, keyword explorer, rank tracking, link checks, content briefs, Search Console &amp; Analytics, ad revenue hub and link marketplace. Free plan, Pro $9/month.">
 <meta name="twitter:image" content="https://seoforge.syedsenterprises.org/logo.png">
 <script>
 /* Apply the saved theme before first paint (same key the app uses for guests).
@@ -22,45 +22,206 @@
 try{var _p=JSON.parse(localStorage.getItem("syedSuite.preferences")||"null");var _t=_p?_p.theme:"system";if(_t==="dark"||(_t==="system"&&matchMedia("(prefers-color-scheme: dark)").matches))document.documentElement.setAttribute("data-theme","dark");}catch(e){}
 </script>
 <link rel="stylesheet" href="./assets/styles.css">
+<script src="./assets/core.js"></script>
 </head>
 <body>
 <header class="landing-header">
   <div class="wrap">
-    <h1>SEO<span>Forge</span> <span data-app-version>v2.10.0</span></h1>
-    <p>SEO audit, keywords, rank tracking, link checks, ad revenue &amp; link sales — one dashboard by Syeds Enterprises. Free sources only. No invented numbers.</p>
+    <a class="brand" href="./"><img src="./logo.png" alt="SEOForge logo" width="32" height="32">SEO<span>Forge</span> <span style="font-size:12px;color:#94a3b8;font-weight:400">v2.11.0</span></a>
+    <nav class="landing-nav" aria-label="Sections">
+      <a href="#tools">Tools</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#solutions">Solutions</a>
+      <a href="#learn">Learn</a>
+      <a href="#faq">FAQ</a>
+      <a href="#hire">Hire me</a>
+    </nav>
+    <div class="landing-auth">
+      <a class="btn secondary" href="./app.html#auth=signin">Sign in</a>
+      <a class="btn" href="./app.html#auth=signup">Create free account</a>
+    </div>
   </div>
 </header>
-<main>
+<main class="landing-main">
   <div class="hero">
     <h2>SEO, ads &amp; links — in one place</h2>
     <p>Free SEO tools on real public data — no invented numbers. Site audits, keyword ideas, rank tracking, paid-link checks, ad revenue logging and a link marketplace.</p>
     <div class="cta">
       <a class="btn" href="./app.html#auth=signup">Create free account</a>
       <a class="btn secondary" href="./app.html#auth=signin">Sign in</a>
-      <a class="ghost-link" href="./app.html#guest">Continue without an account</a>
+      <a class="btn-ghost" href="./app.html#guest">Continue without an account</a>
     </div>
     <p class="muted" style="margin-top:12px">Free plan, no card. Your data stays yours.</p>
+    <div class="card hero-audit" id="heroAudit">
+      <h3>Audit my site — free, no signup</h3>
+      <p class="muted">A real Health Check + Speed Score, right here in seconds. No account, no card — the magnet that brings people in.</p>
+      <div class="try-box">
+        <input type="url" id="heroUrl" placeholder="e.g. https://example.com" aria-label="Site URL to audit">
+        <button class="btn" id="heroAuditBtn" type="button">Audit my site free</button>
+      </div>
+      <p class="muted" id="heroAuditProg" role="status"></p>
+      <div id="heroAuditOut"></div>
+    </div>
   </div>
+
+  <div class="card" id="showcase">
+    <h2>See what it does — before you sign up</h2>
+    <p class="muted">A demo of the real output format. The Audit tab is a real run of example.com (a fast site, measured 23 Nov 2026); the other tabs show the format with clearly-labelled sample data.</p>
+    <div class="showcase-tabs" role="tablist" aria-label="Product preview">
+      <button type="button" class="active" data-showcase="audit" role="tab">Audit</button>
+      <button type="button" data-showcase="keywords" role="tab">Keywords</button>
+      <button type="button" data-showcase="links" role="tab">Links</button>
+    </div>
+    <div class="showcase-panel active" id="showcase-audit">
+      <p><span class="sample-tag">Demo — real run of example.com</span></p>
+      <div class="showcase-grid">
+        <div style="text-align:center">
+          <svg width="120" height="120" viewBox="0 0 96 96" role="img" aria-label="PageSpeed score 100 out of 100"><circle cx="48" cy="48" r="34" fill="none" stroke="#e5e7eb" stroke-width="9"/><circle cx="48" cy="48" r="34" fill="none" stroke="#15803d" stroke-width="9" stroke-linecap="round" stroke-dasharray="213.6 213.6" transform="rotate(-90 48 48)"/><text x="48" y="52" text-anchor="middle" font-size="22" font-weight="800" fill="currentColor">100</text><text x="48" y="68" text-anchor="middle" font-size="11" fill="currentColor">/ 100</text></svg>
+          <p><b>PageSpeed (mobile)</b><br><span class="muted">LCP 0.8s · CLS 0</span></p>
+        </div>
+        <div>
+          <p><b>example.com — 6 of 7 checks passed.</b> Even a perfect PageSpeed score does not mean the page is finished:</p>
+          <table><tr><th>Check</th><th>Result</th><th>Detail</th></tr>
+          <tr><td><b>HTTPS</b></td><td><span class="pill ok">Pass</span></td><td>Served over HTTPS.</td></tr>
+          <tr><td><b>Title tag</b></td><td><span class="pill warn">Check</span></td><td>"Example Domain" — 14 characters (ideal 30–60).</td></tr>
+          <tr><td><b>Meta description</b></td><td><span class="pill bad">Fail</span></td><td>No meta description — Google will pick its own snippet.</td></tr>
+          <tr><td><b>Exactly one H1</b></td><td><span class="pill bad">Fail</span></td><td>0 H1 tag(s) on the page.</td></tr>
+          <tr><td><b>Image alt text</b></td><td><span class="pill ok">Pass</span></td><td>No images on the page.</td></tr>
+          <tr><td><b>Viewport meta tag</b></td><td><span class="pill ok">Pass</span></td><td>Viewport tag present — the page can scale on phones.</td></tr>
+          <tr><td><b>Mobile PageSpeed ≥ 50</b></td><td><span class="pill ok">Pass</span></td><td>Mobile performance score 100/100.</td></tr>
+          </table>
+          <p class="muted">Measured 23 Nov 2026 with the same Health Check the app runs. The Speed Score row appears on a live run — it needs the page's real server timings, which a static demo cannot show.</p>
+        </div>
+      </div>
+    </div>
+    <div class="showcase-panel" id="showcase-keywords">
+      <p><span class="sample-tag">Sample — format only</span></p>
+      <div class="try-box">
+        <input type="text" id="tryKw" placeholder="Try a keyword, e.g. ai tools" aria-label="Try a keyword">
+        <button class="btn secondary" id="tryKwBtn" type="button">Show sample suggestions</button>
+      </div>
+      <div id="tryKwOut"></div>
+      <div style="overflow-x:auto"><table><tr><th>Keyword</th><th>Difficulty (estimate)</th><th>What it means</th></tr>
+      <tr><td>ai tools</td><td>62 / 100</td><td>Competitive — big directories and review sites own the top 10.</td></tr>
+      <tr><td>best ai tools for students</td><td>41 / 100</td><td>Easier — narrower intent, fewer authority pages.</td></tr>
+      <tr><td>free ai tools no signup</td><td>35 / 100</td><td>Easier still — a long-tail query with a clear need.</td></tr>
+      </table></div>
+      <p class="muted">Sample rows — the real Keyword Explorer shows live Google suggestions and a difficulty estimate from the live Bing top 10. Search volume is never shown, because no free source provides it.</p>
+    </div>
+    <div class="showcase-panel" id="showcase-links">
+      <p><span class="sample-tag">Sample — format only</span></p>
+      <p><b>How a link verification looks:</b> the Link Verifier reads the live linking page and reports the real <code>rel</code> attribute — the thing that decides whether a paid link passes value.</p>
+      <div style="overflow-x:auto"><table><tr><th>Anchor text</th><th>Link</th><th>Type</th></tr>
+      <tr><td>LookForIt — AI tools directory</td><td>https://www.lookforit.xyz</td><td><span class="pill ok">Dofollow</span><br><span class="muted">rel="(none)"</span></td></tr>
+      <tr><td>Sponsored listing</td><td>https://www.lookforit.xyz</td><td><span class="pill warn">Sponsored</span><br><span class="muted">rel="sponsored"</span></td></tr>
+      </table></div>
+      <p class="muted">Sample rows. A paid link showing as Dofollow needs fixing; a sponsored link should be rel="sponsored" (or nofollow). Run the real check in the app — the link in the result is clickable to the live page.</p>
+    </div>
+  </div>
+  <div class="cta">
+    <a class="btn" href="./app.html#auth=signup">Create free account</a>
+    <a class="btn secondary" href="./app.html#auth=signin">Sign in</a>
+  </div>
+
+  <div id="tools">
+    <h2>Every tool group, one dashboard</h2>
+    <div class="cap-row">
+      <div><h3>Audit — find what is broken, fast</h3><p>Crawl a sitemap and check every URL, plus a real Google PageSpeed score and our own Speed Score that never needs Google's quota.</p></div>
+      <a class="btn" href="./app.html#tab=audit">Run an audit</a>
+    </div>
+    <div class="cap-row">
+      <div><h3>Keywords — find the words worth ranking for</h3><p>Live Google suggestions for any seed keyword, rank tracking on Bing results (labelled honestly, not Google), and a difficulty estimate from the live top 10.</p></div>
+      <a class="btn" href="./app.html#tab=keywords">Explore keywords</a>
+    </div>
+    <div class="cap-row">
+      <div><h3>Links — prove a paid link is really live</h3><p>Check a paid link is really on the page with its real rel attribute, find broken links, and follow redirect chains hop by hop.</p></div>
+      <a class="btn" href="./app.html#tab=links">Verify a link</a>
+    </div>
+    <div class="cap-row">
+      <div><h3>Content — briefs from the pages that actually rank</h3><p>Briefs built from the live top 5 pages: their headings, lengths and real question suggestions. SERP previews, schema detection, robots and sitemap tools included.</p></div>
+      <a class="btn" href="./app.html#tab=brief">Build a brief</a>
+    </div>
+    <div class="cap-row">
+      <div><h3>Google — your real Search Console &amp; Analytics</h3><p>Connect your Google account (read-only) and see real Search Console clicks, impressions and positions, plus GA4 sessions and users.</p></div>
+      <a class="btn" href="./app.html#tab=gsc">See Google data</a>
+    </div>
+    <div class="cap-row">
+      <div><h3>Money — track what your site earns, and sell links</h3><p>Log Adsterra, Monetag and AdSense revenue by hand, estimate what your traffic could earn, and list sites in the link marketplace.</p></div>
+      <a class="btn" href="./app.html#tab=ads">Track revenue</a>
+    </div>
+    <div class="features">
+      <div class="feature"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><b>Audit</b><span>Crawl a sitemap and check every URL, plus a real Google PageSpeed score, LCP and CLS — and our own Speed Score that never needs Google's quota.</span></div>
+      <div class="feature"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.6 13.4L11 3.8A2 2 0 0 0 9.6 3.2H4a1 1 0 0 0-1 1v5.6c0 .5.2 1 .6 1.4l9.6 9.6a2 2 0 0 0 2.8 0l4.6-4.6a2 2 0 0 0 0-2.8z"/><circle cx="7.5" cy="7.5" r="1"/></svg><b>Keywords</b><span>Live Google suggestions for any seed keyword, rank tracking on Bing results (labelled honestly, not Google), and a difficulty estimate from the live top 10.</span></div>
+      <div class="feature"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg><b>Links</b><span>Check a paid link is really live on the page with its real rel attribute, find broken links, and follow redirect chains hop by hop.</span></div>
+      <div class="feature"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg><b>Content</b><span>Briefs built from the live top 5 pages: their headings, lengths and real question suggestions. SERP previews, schema detection, robots and sitemap tools included.</span></div>
+      <div class="feature"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/></svg><b>Google</b><span>Connect your Google account (read-only) and see real Search Console clicks, impressions and positions, plus GA4 sessions and users.</span></div>
+      <div class="feature"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 6v12M15 9.5c0-1.5-1.3-2.5-3-2.5s-3 .8-3 2 1 2 3 2.5 3 1 3 2.5-1.3 2-3 2-3-1-3-2.5"/></svg><b>Money</b><span>Log Adsterra, Monetag and AdSense revenue by hand, estimate what your traffic could earn, and list sites in the link marketplace.</span></div>
+    </div>
+  </div>
+  <div class="cta">
+    <a class="btn" href="./app.html#auth=signup">Create free account</a>
+    <a class="btn secondary" href="./app.html#auth=signin">Sign in</a>
+  </div>
+
   <div class="card">
     <h2>What it actually does</h2>
-    <p class="muted">Real numbers from real runs — nothing here is a customer count or a promise:</p>
+    <p class="muted">Plan facts only — nothing here is a customer count or a promise:</p>
     <ul class="muted" style="margin:6px 0;padding-left:20px">
       <li><b>19 tools in 7 groups</b> — Audit, Keywords, Links, Content, Google, Money, Settings.</li>
-      <li><b>Example from a real run:</b> lookforit.xyz scored <b>87/100 (Good)</b> on the SEOForge Speed Score, measured 23 Nov 2026.</li>
-      <li><b>Free plan:</b> 5 site audits, 5 link checks, 3 content briefs, 3 competitor compares and 10 tool checks a month; 10 keywords tracked.</li>
-      <li><b>Pro is $9/month</b> — unlimited everything, paid through PayPal, cancel anytime.</li>
+      <li><b>Free plan:</b> 5 site audits, 5 link checks, 3 content briefs, 3 competitor compares and 10 tool checks a month; 10 keywords tracked; 5 AI messages a day; 1 site.</li>
+      <li><b>Pro is $9/month</b> — unlimited everything, 3 sites. <b>Agency is $29/month</b> — 10 sites plus featured marketplace listings. <b>Business is custom.</b></li>
     </ul>
   </div>
-  <div class="features">
-    <div class="feature"><b>Audit</b><span>Crawl a sitemap and check every URL, plus a real Google PageSpeed score, LCP and CLS — and our own Speed Score that never needs Google's quota.</span></div>
-    <div class="feature"><b>Keywords</b><span>Live Google suggestions for any seed keyword, rank tracking on Bing results (labelled honestly, not Google), and a difficulty estimate from the live top 10.</span></div>
-    <div class="feature"><b>Links</b><span>Check a paid link is really live on the page with its real rel attribute, find broken links, and follow redirect chains hop by hop.</span></div>
-    <div class="feature"><b>Content</b><span>Briefs built from the live top 5 pages: their headings, lengths and real question suggestions. SERP previews, schema detection, robots and sitemap tools included.</span></div>
-    <div class="feature"><b>Google</b><span>Connect your Google account (read-only) and see real Search Console clicks, impressions and positions, plus GA4 sessions and users.</span></div>
-    <div class="feature"><b>Money</b><span>Log Adsterra, Monetag and AdSense revenue by hand, estimate what your traffic could earn, and list sites in the link marketplace.</span></div>
+  <div class="stats-band">
+    <div class="stat"><b>19</b><span>tools — every group in one dashboard, no tab-hopping between tools</span></div>
+    <div class="stat"><b>7</b><span>groups — Audit, Keywords, Links, Content, Google, Money, Settings</span></div>
+    <div class="stat"><b>Free</b><span>5 audits/mo · 10 keywords · 5 link checks · 3 briefs · 3 compares · 10 tool checks · 5 AI messages/day · 1 site — no card</span></div>
+    <div class="stat"><b>$9/mo</b><span>Pro — everything unlimited, 3 sites, paid through PayPal, cancel anytime</span></div>
   </div>
-  <div class="card">
-    <h2>Pricing</h2>
+  <div class="cta">
+    <a class="btn" href="./app.html#auth=signup">Create free account</a>
+    <a class="btn secondary" href="./app.html#auth=signin">Sign in</a>
+  </div>
+
+  <div class="card" id="solutions">
+    <h2>Why SEOForge — and why it costs $9, not $139</h2>
+    <p class="muted">Semrush charges $139/month. We charge $9. That is not a discount — it is a different market, and it is huge.</p>
+    <div class="why-grid">
+      <div class="why-card"><h3>Price — $9 vs $139</h3><p>We are for the people Semrush prices out: freelancers, students, small publishers, bloggers in India and other price-sensitive markets. That is our market, and it is huge.</p></div>
+      <div class="why-card"><h3>Tools + marketplace in one place</h3><p>Semrush has no link marketplace. We do — buy and sell link placements ($20 listings) and verify with the Link Verifier that a paid link is really live on the page with its real rel attribute. Tools bring users in; the marketplace is what makes us different.</p></div>
+      <div class="why-card"><h3>No friction</h3><p>Free tier with no card, and most tools work with no account at all. Semrush makes you sign up and pay before you see anything useful.</p></div>
+      <div class="why-card"><h3>Honest numbers</h3><p>Every score is measured or labelled as an estimate. No invented search volumes, no faked backlink index. In a market full of inflated claims, that is the trust play.</p></div>
+      <div class="why-card"><h3>Light and fast</h3><p>The whole app is ~200KB — it loads instantly on a cheap phone on 4G. Semrush's app is heavy.</p></div>
+    </div>
+    <div class="honest-gap"><b>What we don't have (yet) — and we won't hide it:</b> we do NOT have a backlink index or a keyword-volume database. That is what the $139 buys at Semrush, and our $9 reflects it. We never claim "Semrush power" or "Ahrefs alternative" as if the data were equal. The honest pitch is: everything a small site needs to audit, track, and earn — for $9.</div>
+  </div>
+  <div class="cta">
+    <a class="btn" href="./app.html#auth=signup">Create free account</a>
+    <a class="btn secondary" href="./app.html#auth=signin">Sign in</a>
+  </div>
+
+  <div class="card" id="trust">
+    <h2>Why trust this — don't take our word for it</h2>
+    <p class="muted">Don't trust our word — check it. Verification is built into the product:</p>
+    <div class="why-grid">
+      <div class="why-card"><h3>Measured by Google's own API</h3><p>PageSpeed scores come from Google PageSpeed Insights — Google's API, not our own numbers. Our Speed Score is our own measurement, and it says so on the report.</p></div>
+      <div class="why-card"><h3>Every number shows its raw inputs</h3><p>Each Speed Score sub-score shows its real measurement — response time in milliseconds, page weight in kilobytes, the actual counts. No score without its evidence.</p></div>
+      <div class="why-card"><h3>Verify it yourself in one click</h3><p>Every PageSpeed score links to Google's own PageSpeed tool, so you can compare — same API, so it matches. Every verified link is clickable to the live page.</p></div>
+      <div class="why-card"><h3>Free audit first, no card</h3><p>Run the audit above on your own site before paying anything. If the numbers don't match what you know about your site, don't pay — the check is free either way.</p></div>
+      <div class="why-card"><h3>We admit what we can't do</h3><p>No backlink index, no search volumes, no true LCP/CLS without a real browser render — the limits are stated in the UI, not hidden. Admitting what we can't do is what makes the rest believable.</p></div>
+    </div>
+  </div>
+  <div class="cta">
+    <a class="btn" href="./app.html#auth=signup">Create free account</a>
+    <a class="btn secondary" href="./app.html#auth=signin">Sign in</a>
+  </div>
+
+  <div class="card" id="pricing">
+    <h2>Pricing — start free, upgrade when it pays for itself</h2>
+    <div class="price-toggle" role="group" aria-label="Billing period">
+      <button type="button" class="active" data-billing="monthly">Monthly</button>
+      <button type="button" data-billing="yearly">Yearly — save up to $58</button>
+    </div>
     <div class="price-grid">
       <div class="price-card">
         <h3>Free</h3>
@@ -72,6 +233,8 @@ try{var _p=JSON.parse(localStorage.getItem("syedSuite.preferences")||"null");var
           <li>3 content briefs / month</li>
           <li>3 competitor compares / month</li>
           <li>10 tool checks / month (broken links, redirects, schema, robots, sitemap)</li>
+          <li>5 AI messages a day</li>
+          <li>1 site</li>
           <li>Manual ad revenue logging</li>
           <li>Marketplace listings &amp; orders</li>
         </ul>
@@ -79,41 +242,155 @@ try{var _p=JSON.parse(localStorage.getItem("syedSuite.preferences")||"null");var
       </div>
       <div class="price-card pro">
         <h3>Pro</h3>
-        <div class="amount">$9<span style="font-size:15px;font-weight:400">/month</span></div>
+        <div class="amount"><span data-monthly>$9<span style="font-size:15px;font-weight:400">/month</span></span><span data-yearly hidden>$90<span style="font-size:15px;font-weight:400">/year</span></span></div>
+        <p class="muted" data-yearly-note hidden>$7.50/month billed yearly — save $18.</p>
         <ul>
-          <li>Unlimited site audits</li>
-          <li>Unlimited tracked keywords</li>
-          <li>Unlimited link verifications</li>
-          <li>Everything in Free</li>
-          <li>Unlimited content briefs, competitor compares &amp; tool checks</li>
+          <li>Everything unlimited</li>
+          <li>Unlimited AI messages</li>
+          <li>3 sites</li>
           <li>Bulk audits (5 URLs at once)</li>
           <li>New features as they arrive</li>
         </ul>
-        <a class="btn" href="./app.html#auth=signup">Upgrade to Pro — $9/month</a>
+        <a class="btn" href="./app.html#auth=signup">Create a free account — then upgrade in the app</a>
         <p class="muted">Paid securely through PayPal. Cancel anytime from PayPal.</p>
+      </div>
+      <div class="price-card">
+        <h3>Agency</h3>
+        <div class="amount"><span data-monthly>$29<span style="font-size:15px;font-weight:400">/month</span></span><span data-yearly hidden>$290<span style="font-size:15px;font-weight:400">/year</span></span></div>
+        <p class="muted" data-yearly-note hidden>$24.17/month billed yearly — save $58.</p>
+        <ul>
+          <li>Everything in Pro</li>
+          <li>10 sites</li>
+          <li>Featured marketplace listing (shows first, "Featured" badge)</li>
+          <li>Priority email support</li>
+        </ul>
+        <a class="btn" href="./app.html#auth=signup">Create a free account — then upgrade in the app</a>
+        <p class="muted">Paid securely through PayPal. Cancel anytime from PayPal.</p>
+      </div>
+      <div class="price-card business">
+        <h3>Business</h3>
+        <div class="amount">Custom</div>
+        <ul>
+          <li>Everything in Agency</li>
+          <li>Up to 50 sites</li>
+          <li>Custom site limits</li>
+          <li>Dedicated support</li>
+          <li>Custom integrations</li>
+          <li>Volume pricing</li>
+        </ul>
+        <a class="btn secondary" href="mailto:contact@syedsenterprises.org?subject=SEOForge%20Business%20plan">Talk to sales</a>
+        <p class="muted">No fixed price — tell us what you need and we set it up with you.</p>
       </div>
     </div>
     <p class="muted">Honest limits: PageSpeed Insights runs through SEOForge's server key — if Google's quota is exhausted, the app says so instead of showing a fake score. There is no free Ahrefs/Semrush backlink index, so SEOForge does not pretend to have one.</p>
   </div>
+  <div class="cta">
+    <a class="btn" href="./app.html#auth=signup">Create free account</a>
+    <a class="btn secondary" href="./app.html#auth=signin">Sign in</a>
+  </div>
+
+  <div class="card" id="learn">
+    <h2>Learn SEO — real articles, free to read</h2>
+    <div class="blog-grid">
+      <div class="blog-card">
+        <h3><a href="https://lookforit.xyz/articles/best-free-ai-tools-for-nonprofits-2026.html">Best Free AI Tools for Nonprofits in 2026 (Tested Free Tiers, Real Discounts)</a></h3>
+        <p>Free tiers and real discounts, tested — what a nonprofit can actually use without a budget.</p>
+        <a href="https://lookforit.xyz/articles/best-free-ai-tools-for-nonprofits-2026.html">Read the article →</a>
+      </div>
+      <div class="blog-card">
+        <h3><a href="https://lookforit.xyz/articles/best-ai-tools-for-authors-2026.html">Best AI Tools for Authors in 2026: Draft, Edit and Publish a Book</a></h3>
+        <p>Drafting, editing and publishing — the tools that actually help an author finish a book.</p>
+        <a href="https://lookforit.xyz/articles/best-ai-tools-for-authors-2026.html">Read the article →</a>
+      </div>
+      <div class="blog-card">
+        <h3><a href="https://lookforit.xyz/articles/best-ai-tools-to-repurpose-content-2026.html">Best AI Tools to Repurpose Content in 2026: One Video or Post, Everywhere</a></h3>
+        <p>One video or post, everywhere — turn a single piece of content into a week's worth of posts.</p>
+        <a href="https://lookforit.xyz/articles/best-ai-tools-to-repurpose-content-2026.html">Read the article →</a>
+      </div>
+    </div>
+  </div>
+  <div class="cta">
+    <a class="btn" href="./app.html#auth=signup">Create free account</a>
+    <a class="btn secondary" href="./app.html#auth=signin">Sign in</a>
+  </div>
+
+  <div class="hire-card" id="hire">
+    <h3>Hire Syed — custom SEO work for companies</h3>
+    <p>Site audits, content writing, link building, and custom software through Syed Enterprises. Syed Shahed is a final-year Computer Science student, SEO content writer, and founder of Syed Enterprises.</p>
+    <a class="btn" href="mailto:contact@syedsenterprises.org?subject=Custom%20SEO%20work">Email contact@syedsenterprises.org</a>
+    <a class="btn secondary" href="https://syedsenterprises.org" style="background:transparent;color:#cbd5e1;border-color:#475569">syedsenterprises.org</a>
+  </div>
+  <div class="cta">
+    <a class="btn" href="./app.html#auth=signup">Create free account</a>
+    <a class="btn secondary" href="./app.html#auth=signin">Sign in</a>
+  </div>
+
   <div class="card">
+    <h2>More from Syed Enterprises</h2>
+    <p><a href="https://www.lookforit.xyz">LookForIt</a> — a directory of 153 verified AI tools · <a href="https://www.estatepath.online">Estate Path</a> — Florida real estate guides and data · <a href="https://syedsenterprises.org">Syed Enterprises</a> — software for different industries, privacy and security first.</p>
+    <p class="muted"><b>Data sources:</b> Google PageSpeed Insights, Google Suggest, Bing search results. No invented numbers, no faked indexes.</p>
+  </div>
+
+  <div class="card" id="faq">
     <h2>Questions, answered plainly</h2>
-    <details><summary>Is it really free?</summary><p class="muted">Yes — the free plan needs no card and no trial. It has monthly limits (5 audits, 3 briefs, 3 compares, 10 tool checks, 10 keywords). Pro is $9/month for unlimited use.</p></details>
+    <details><summary>Is it really free?</summary><p class="muted">Yes — the free plan needs no card and no trial. It has monthly limits (5 audits, 3 briefs, 3 compares, 10 tool checks, 10 keywords, 5 AI messages a day, 1 site). Pro is $9/month for unlimited use.</p></details>
     <details><summary>Where does the data come from?</summary><p class="muted">Real public sources only: your own sitemap, Google PageSpeed Insights, Google Suggest, Bing search results (DuckDuckGo as a fallback), and the live pages themselves. Search volume and backlink counts are not shown, because no free source provides them — they are never invented.</p></details>
     <details><summary>Do I need an account?</summary><p class="muted">No. Continue without an account and every tool works in your browser (localStorage). Sign in free to save your audits, keywords and revenue to your account and use them on any device.</p></details>
     <details><summary>What happens to my data?</summary><p class="muted">Signed-in data lives in your own Supabase account, visible only to you. Logged-out data never leaves your browser. Google tokens are stored server-side, never in the page. Export everything anytime from Workspace settings.</p></details>
     <details><summary>What about the AI assistant?</summary><p class="muted">The in-site assistant ("Ask Forge") runs on your own AI key — CoArena, or a free Gemini key. SEOForge stores no key server-side and pays nothing for your chats. Without a key it still answers questions about your own saved data, free.</p></details>
+    <details><summary>Why should I trust the scores?</summary><p class="muted">Don't take our word for it — check it. PageSpeed scores come from Google's own API, and every score links to Google's PageSpeed tool so you can compare. Every number shows its raw inputs, every verified link is clickable to the live page, and the limits are stated in the UI. Run the free audit above on your own site first.</p></details>
   </div>
   <div class="hero">
     <h2>Start free — no card, no install</h2>
     <div class="cta">
       <a class="btn" href="./app.html#auth=signup">Create free account</a>
       <a class="btn secondary" href="./app.html#auth=signin">Sign in</a>
-      <a class="ghost-link" href="./app.html#guest">Continue without an account</a>
+      <a class="btn-ghost" href="./app.html#guest">Continue without an account</a>
     </div>
   </div>
 </main>
-<footer>
-  SEOForge <span data-app-version>v2.10.0</span> — by Syeds Enterprises. <a href="./privacy.html">Privacy Policy</a> · <a href="./terms.html">Terms of Service</a> · <a href="mailto:contact@syedsenterprises.org">contact@syedsenterprises.org</a>
+<footer class="landing-footer">
+  <div class="footer-cols">
+    <div>
+      <h4>Product</h4>
+      <ul>
+        <li><a href="./app.html#tab=audit">Site Audit</a></li>
+        <li><a href="./app.html#tab=keywords">Keywords</a></li>
+        <li><a href="./app.html#tab=links">Links</a></li>
+        <li><a href="./app.html#tab=brief">Content</a></li>
+        <li><a href="./app.html#tab=gsc">Google</a></li>
+        <li><a href="./app.html#tab=ads">Money</a></li>
+        <li><a href="./app.html#tab=preferences">Settings</a></li>
+      </ul>
+    </div>
+    <div>
+      <h4>Company</h4>
+      <ul>
+        <li><a href="https://syedsenterprises.org">Syed Enterprises</a></li>
+        <li><a href="https://www.lookforit.xyz">LookForIt</a></li>
+        <li><a href="https://www.estatepath.online">Estate Path</a></li>
+        <li><a href="mailto:contact@syedsenterprises.org">Contact</a></li>
+      </ul>
+    </div>
+    <div>
+      <h4>Resources</h4>
+      <ul>
+        <li><a href="./privacy.html">Privacy</a></li>
+        <li><a href="./terms.html">Terms</a></li>
+        <li><a href="#faq">FAQ</a></li>
+        <li><a href="#learn">Learn SEO</a></li>
+        <li><a href="#hire">Hire Syed</a></li>
+      </ul>
+    </div>
+    <div>
+      <h4>Legal</h4>
+      <ul>
+        <li><a href="./privacy.html">Privacy Policy</a></li>
+        <li><a href="./terms.html">Terms of Service</a></li>
+      </ul>
+    </div>
+  </div>
+  <p>SEOForge v2.11.0 — by Syed Enterprises. <a href="./privacy.html">Privacy Policy</a> · <a href="./terms.html">Terms of Service</a> · <a href="mailto:contact@syedsenterprises.org">contact@syedsenterprises.org</a></p>
 </footer>
 <script>
 /* Signed-in users never see the landing: forward straight to the app.
@@ -134,6 +411,161 @@ try{var _p=JSON.parse(localStorage.getItem("syedSuite.preferences")||"null");var
       }
     }
   }catch(e){}
+})();
+</script>
+<script>
+/* Landing interactions: showcase tabs, the try-it keyword box, and the
+   monthly/yearly pricing toggle. Small, self-contained, no app code. */
+(function(){
+  /* Showcase tabs: Audit / Keywords / Links swap the panel. */
+  var tabs = document.querySelectorAll("[data-showcase]");
+  tabs.forEach(function(b){
+    b.addEventListener("click", function(){
+      tabs.forEach(function(x){ x.classList.remove("active"); });
+      b.classList.add("active");
+      document.querySelectorAll(".showcase-panel").forEach(function(p){ p.classList.remove("active"); });
+      var panel = document.getElementById("showcase-" + b.dataset.showcase);
+      if(panel) panel.classList.add("active");
+    });
+  });
+  /* Try-it keyword box: sample suggestions built from the input with the same
+     prefix/suffix patterns the app uses — labelled "Sample", never live data. */
+  var tryBtn = document.getElementById("tryKwBtn");
+  if(tryBtn){
+    tryBtn.addEventListener("click", function(){
+      var q = (document.getElementById("tryKw").value || "").trim();
+      var out = document.getElementById("tryKwOut");
+      if(!q){ out.innerHTML = '<p class="muted">Type a keyword first.</p>'; return; }
+      var suggestions = ["best " + q, "how to " + q, "what is " + q, q + " free", q + " for beginners", "buy " + q];
+      out.innerHTML = '<p><span class="sample-tag">Sample suggestions for "' + q.replace(/[<>&"]/g, "") + '"</span></p><ul class="muted">' + suggestions.map(function(s){ return "<li>" + s.replace(/[<>&"]/g, "") + "</li>"; }).join("") + '</ul><p class="muted">Sample only — run the real Keyword Explorer in the app for live Google suggestions.</p>';
+    });
+  }
+  /* Pricing toggle: monthly/yearly swaps the Pro and Agency prices. Business
+     always shows "Custom". */
+  var billBtns = document.querySelectorAll("[data-billing]");
+  billBtns.forEach(function(b){
+    b.addEventListener("click", function(){
+      billBtns.forEach(function(x){ x.classList.remove("active"); });
+      b.classList.add("active");
+      var yearly = b.dataset.billing === "yearly";
+      document.querySelectorAll("[data-monthly]").forEach(function(el){ el.hidden = yearly; });
+      document.querySelectorAll("[data-yearly]").forEach(function(el){ el.hidden = !yearly; });
+      document.querySelectorAll("[data-yearly-note]").forEach(function(el){ el.hidden = !yearly; });
+    });
+  });
+})();
+</script>
+<script>
+/* HERO AUDIT WIDGET — the magnet: a free, instant, no-signup Health Check +
+   Speed Score, right on the landing. It calls the same public edge functions
+   the app uses (fetch-proxy + pagespeed) with the public publishable key —
+   the same key embedded in the app code. No secret, no account, no card.
+   The scoring and the 8 check rules come from ./assets/core.js, the same
+   module the app uses, so the free hero audit and the in-app Health Check
+   can never disagree. */
+(function(){
+  var SUPABASE_URL = "https://mzbesucdnjecinkdawzy.supabase.co";
+  var KEY = "sb_publishable_r61BK1KPrPVwF6O2AncpnA_vlg_xx6N"; /* public publishable key — same as the app */
+  var APP_URL = "https://seoforge.syedsenterprises.org/app.html";
+  var btn = document.getElementById("heroAuditBtn");
+  var input = document.getElementById("heroUrl");
+  var prog = document.getElementById("heroAuditProg");
+  var out = document.getElementById("heroAuditOut");
+  if(!btn || !input || !prog || !out) return;
+  function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
+  function scoreRing(score){
+    var s = Math.max(0, Math.min(100, Math.round(score)));
+    var r = 34, c = 2*Math.PI*r;
+    var color = s>=90 ? "#15803d" : s>=70 ? "#0f766e" : s>=50 ? "#b45309" : "#b91c1c";
+    return '<svg width="120" height="120" viewBox="0 0 96 96" role="img" aria-label="Speed score ' + s + ' out of 100"><circle cx="48" cy="48" r="'+r+'" fill="none" stroke="#e5e7eb" stroke-width="9"/><circle cx="48" cy="48" r="'+r+'" fill="none" stroke="'+color+'" stroke-width="9" stroke-linecap="round" stroke-dasharray="'+(c*s/100).toFixed(1)+" "+c.toFixed(1)+'" transform="rotate(-90 48 48)"/><text x="48" y="52" text-anchor="middle" font-size="22" font-weight="800" fill="currentColor">'+s+'</text><text x="48" y="68" text-anchor="middle" font-size="11" fill="currentColor">/ 100</text></svg>';
+  }
+  async function edge(fn, body, ms){
+    var c = new AbortController();
+    var t = setTimeout(function(){ c.abort(); }, ms || 20000);
+    try{
+      var res = await fetch(SUPABASE_URL + "/functions/v1/" + fn, {method:"POST", headers:{"Content-Type":"application/json", apikey:KEY, Authorization:"Bearer " + KEY}, body:JSON.stringify(body), signal:c.signal});
+      var data = await res.json().catch(function(){ return {}; });
+      return {ok:res.ok, status:res.status, data:data};
+    }finally{ clearTimeout(t); }
+  }
+  async function fetchPage(url){
+    var r = await edge("fetch-proxy", {url:url}, 20000);
+    if(r.ok && typeof r.data.text === "string" && r.data.status !== 403 && r.data.status !== 429){
+      return {doc:new DOMParser().parseFromString(r.data.text, "text/html"), text:r.data.text, ttfbMs:r.data.ttfbMs, totalMs:r.data.totalMs, bytes:r.data.bytes, compressed:r.data.compressed, headers:r.data.headers||null};
+    }
+    /* The site blocked our server — one public-proxy fallback for the HTML.
+       Timings are null, so the TTFB sub-score honestly says "not measured". */
+    var res = await fetch("https://api.allorigins.win/raw?url=" + encodeURIComponent(url));
+    if(!res.ok) throw new Error("Could not fetch the page (HTTP " + res.status + "). The site may block automated checks — try the full Health Check in the app.");
+    var text = await res.text();
+    return {doc:new DOMParser().parseFromString(text, "text/html"), text:text, ttfbMs:null, totalMs:null, bytes:null, compressed:null, headers:null};
+  }
+  async function runHeroAudit(){
+    if(!window.SEOForgeCore){ out.innerHTML = '<div class="err">The audit could not start — the page failed to load its scoring module. Reload and retry.</div>'; return; }
+    var url = SEOForgeCore.normaliseSite(input.value);
+    if(!url){ out.innerHTML = '<div class="err">Enter a site URL first.</div>'; return; }
+    btn.disabled = true; prog.textContent = "Reading the page…"; out.innerHTML = "";
+    try{
+      var psiP = edge("pagespeed", {url:url, strategy:"mobile"}, 60000);
+      var page = await fetchPage(url);
+      var doc = page.doc;
+      var title = ((doc.querySelector("title")||{}).textContent||"").trim();
+      var descEl = doc.querySelector('meta[name="description"]');
+      var desc = descEl ? (descEl.getAttribute("content")||"") : "";
+      var h1s = doc.querySelectorAll("h1").length;
+      var imgs = Array.prototype.slice.call(doc.querySelectorAll("img"));
+      var noAlt = imgs.filter(function(i){ return !((i.getAttribute("alt")||"").trim()); }).length;
+      var viewport = !!doc.querySelector('meta[name="viewport"]');
+      var sf = SEOForgeCore.scoreSpeedMetrics(SEOForgeCore.extractSpeedMetrics(doc, page.text||"", page));
+      prog.textContent = "Running PageSpeed (mobile)…";
+      var psiScore = null, psiErr = null;
+      try{
+        var pr = await psiP;
+        if(pr.ok && pr.data && typeof pr.data.score === "number"){ psiScore = pr.data.score; }
+        else psiErr = (pr.data && pr.data.error) || ("PageSpeed error (HTTP " + pr.status + ")");
+      }catch(e){ psiErr = e.message||e; }
+      var checks = SEOForgeCore.healthChecks({url:url, title:title, desc:desc, h1s:h1s, imgs:imgs.length, noAlt:noAlt, viewport:viewport, psiScore:psiScore, psiErr:psiErr, sfScore:sf.score, sfGrade:sf.grade});
+      var passed = checks.filter(function(c){ return c.pass; }).length;
+      renderResult(url, checks, passed, sf, psiScore);
+      prog.textContent = "";
+    }catch(e){
+      out.innerHTML = '<div class="err"><b>Audit failed:</b> ' + esc(e.message||e) + '</div>';
+      prog.textContent = "";
+    }finally{ btn.disabled = false; }
+  }
+  function renderResult(url, checks, passed, sf, psiScore){
+    var rows = checks.map(function(c){
+      var pill = c.pass ? '<span class="pill ok">Pass</span>' : c.warn ? '<span class="pill warn">Check</span>' : '<span class="pill bad">Fail</span>';
+      return '<tr><td><b>' + esc(c.name) + '</b></td><td>' + pill + '</td><td>' + esc(c.detail) + '</td></tr>';
+    }).join("");
+    var shareLink = APP_URL + "#tab=health&url=" + encodeURIComponent(url);
+    var shareText = "My site scored " + sf.score + "/100 on SEOForge — check yours free: " + shareLink;
+    var saveLink = "./app.html#auth=signup&tab=health&url=" + encodeURIComponent(url);
+    out.innerHTML = '<div class="card" style="margin-top:12px"><div class="score-flex">' + scoreRing(sf.score)
+      + '<div><p><b>SEOForge Speed Score — ' + sf.score + '/100 (' + esc(sf.grade) + ')</b></p>'
+      + '<p><b>' + passed + ' of ' + checks.length + ' checks passed.</b>' + (psiScore!=null ? ' · PageSpeed (mobile) <b>' + psiScore + '/100</b> <a href="https://pagespeed.web.dev/analysis?url=' + encodeURIComponent(url) + '" target="_blank" rel="noopener">verify</a>' : ' · PageSpeed could not be checked') + '</p></div></div>'
+      + '<table><tr><th>Check</th><th>Result</th><th>Detail</th></tr>' + rows + '</table>'
+      + '<p class="muted">How this is measured: the live page was read just now — the title, meta description, H1 count, image alt text and viewport above are the real values from the page. PageSpeed is Google\u2019s API. The Speed Score is our own measurement — every sub-score shows its raw number.</p>'
+      + '<p class="muted">Free audit — full history and tracking need a free account.</p>'
+      + '<div class="row"><button class="btn small" id="heroShareBtn" type="button">Share your score</button><a class="btn small" href="' + esc(saveLink) + '">Save this audit — create a free account</a></div>'
+      + '<p class="muted" id="heroShareNote" role="status"></p></div>';
+    document.getElementById("heroShareBtn").addEventListener("click", function(){
+      var note = document.getElementById("heroShareNote");
+      var done = function(){ note.textContent = "Copied — paste it anywhere. The link opens the Health Check for this site, no signup needed."; };
+      if(navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(shareText).then(done, function(){ fallbackCopy(shareText, note); });
+      } else fallbackCopy(shareText, note);
+    });
+  }
+  function fallbackCopy(text, note){
+    try{
+      var ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select();
+      document.execCommand("copy"); document.body.removeChild(ta);
+      note.textContent = "Copied — paste it anywhere. The link opens the Health Check for this site, no signup needed.";
+    }catch(e){ note.textContent = "Copy failed — here is the link: " + text; }
+  }
+  btn.addEventListener("click", runHeroAudit);
+  input.addEventListener("keydown", function(e){ if(e.key==="Enter"){ e.preventDefault(); runHeroAudit(); } });
 })();
 </script>
 </body>
