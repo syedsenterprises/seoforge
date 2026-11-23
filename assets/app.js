@@ -20,10 +20,10 @@ const PLAN_TIERS = {
 function planTier(p){ return PLAN_TIERS[p] || PLAN_TIERS.free; }
 function planDisplayName(p){ return planTier(p).name; }
 function isPaidPlan(){ return planTier(currentPlan).paid; }
-function siteLimitForPlan(){ return isAdmin() ? 10 : planTier(currentPlan).sites; }
-/* The "My sites" form offers 10 slots (the UI cap). The plan limit gates how
-   many are kept on save: Free 1, Pro 3, Agency 10, Business 50 (a Business
-   account needing more than 10 is set up by the owner). */
+function siteLimitForPlan(){ return isAdmin() ? 50 : planTier(currentPlan).sites; } /* owner: no plan cap (the form still offers 10 slots) */
+/* The "My sites" form offers 10 static slots plus extra inputs created on
+   demand up to the plan limit (Business/Admin: 50). The plan limit gates how
+   many are kept on save: Free 1, Pro 3, Agency 10, Business 50. */
 const SITE_SLOT_IDS = ["siteSlot1","siteSlot2","siteSlot3","siteSlot4","siteSlot5","siteSlot6","siteSlot7","siteSlot8","siteSlot9","siteSlot10"];
 /* Single version source — the header + footer labels are filled from here at load.
    package.json and supabase/functions/status/index.ts must carry the same value
@@ -53,7 +53,16 @@ const ALERT_FN = SUPABASE_URL + "/functions/v1/send-alert";
 
 /* Supabase client (guarded: if the CDN fails, the app still works in local mode). */
 const activeRequests = new Set();
-function cancelPendingRequests(){ for(const controller of activeRequests) controller.abort(); activeRequests.clear(); }
+/* Run-scoped cancellation (F3/F4): the audit run owns its own request set.
+   Cancel aborts ONLY that set — the old code aborted the one global set, so
+   cancelling an audit also killed any other tool's in-flight fetch. Scopes
+   are passed explicitly (fetchTimeout/fetchJsonTimeout/fetchViaProxy/
+   fetchPageDoc/runPSI all take an optional scope); a call with no scope
+   registers in the global set, as before. Sign-out still cancels everything
+   (it reloads the page anyway). */
+let auditRunScope = null;
+function cancelPendingRequests(){ for(const controller of activeRequests) controller.abort(); activeRequests.clear(); if(auditRunScope){ for(const controller of auditRunScope) controller.abort(); auditRunScope.clear(); } }
+function cancelAuditRequests(){ if(auditRunScope){ for(const controller of auditRunScope) controller.abort(); auditRunScope.clear(); } }
 let sb = null, cloudAvailable = false;
 try{
   if(window.supabase && window.supabase.createClient){
@@ -89,6 +98,11 @@ let currentUser = null;   /* Supabase user object when signed in */
 let currentPlan = 'free'; /* 'free' | 'pro' | 'agency' | 'business' */
 let cloudUsage = null, usageLoading = false;
 let cloudUserId = null;   /* guards against double-loading on auth events */
+/* Cloud load state (v2.11.0): until loadCloudData succeeds, the cache holds
+   the empty reset — the Dashboard must show "—" (loading / could not load),
+   never genuine-looking zeros. Local/guest mode is unaffected: its data is
+   localStorage, always present. */
+let cloudDataLoaded = false, cloudDataFailed = false;
 
 /* ---------- views (app.html is the app; the landing page lives at /) ---------- */
 /* Home goes back to the landing page — except for a signed-in user, for whom
@@ -151,6 +165,23 @@ function showBanner(msg, kind){
   b.className = kind === 'warn' ? 'warn' : 'okbox';
   b.hidden = false;
 }
+/* getElementById that returns null for a missing id instead of throwing in
+   the vm test harness (whose $() asserts the id exists in the static HTML).
+   For elements rendered dynamically — the share bar, the disconnect-confirm
+   row — a missing element just means "not on screen". */
+function elOrNull(id){ try{ return document.getElementById(id); }catch(e){ return null; } }
+/* Inline error/warn note prepended to a results area (no native modals).
+   The note survives until the area is re-rendered — the same pattern every
+   tool already uses for empty-input errors. */
+function prependNote(elId, cls, msg){
+  const el = $(elId); if(!el) return;
+  el.innerHTML = '<div class="' + cls + '">' + esc(msg) + '</div>' + el.innerHTML;
+}
+/* Inline error inside a form area (no native modals). Empty msg clears it. */
+function formErr(elId, msg){
+  const el = $(elId); if(!el) return;
+  el.innerHTML = msg ? '<div class="err">' + esc(msg) + '</div>' : '';
+}
 $("topBanner").addEventListener("click", () => { $("topBanner").hidden = true; });
 $("homeBtn").addEventListener("click", showLanding);
 function focusAuth(){ showAuthView("signin"); const el = $("authEmail"); if(el) el.focus(); }
@@ -158,9 +189,12 @@ function showAuthMsg(msg){ $("authMsg").textContent = msg; }
 
 /* ---------- tabs ---------- */
 const VALID_TABS = ["dashboard","audit","health","bulk","keywords","rank","compete","links","broken","redirect","brief","serp","schema","robots","gsc","ads","market","estimator","preferences","admin"];
-/* Deep links: #tab=rank opens the Rank Tracker, etc. Returns "" for anything else. */
+/* Deep links: #tab=rank opens the Rank Tracker, etc. Returns "" for anything else.
+   The tab parameter may sit after another hash parameter (e.g. the landing's
+   "Save this audit" link is #auth=signup&tab=health&url=...), so match tab=
+   after either # or &. */
 function parseTabHash(hash){
-  const m = String(hash||"").match(/#tab=([a-z]+)/);
+  const m = String(hash||"").match(/(?:#|&)tab=([a-z]+)/);
   if(!m || !VALID_TABS.includes(m[1])) return "";
   if(m[1]==="admin" && !isAdmin()) return ""; /* non-owners fall back to dashboard */
   return m[1];
@@ -168,9 +202,10 @@ function parseTabHash(hash){
 /* Shared-score deep link: #tab=health&url=<encoded URL> — from the landing
    hero widget's "Share your score" and from any shared score card. The URL is
    validated by normaliseSite, so junk never reaches the Health Check. Pure,
-   so it is unit testable. */
+   so it is unit testable. The url parameter may follow #auth=signup (the
+   "Save this audit" link), so match tab= after either # or &. */
 function parseShareHash(hash){
-  const m = String(hash||"").match(/#tab=health&url=([^&]+)/);
+  const m = String(hash||"").match(/(?:#|&)tab=health&url=([^&]+)/);
   if(!m) return "";
   try{ return normaliseSite(decodeURIComponent(m[1])); }catch(e){ return ""; }
 }
@@ -178,9 +213,14 @@ function parseShareHash(hash){
    saves to the new account — that is what "Save this audit" means. Set by
    initAppFromUrl, consumed by afterSignIn. */
 let pendingShareUrl = "";
-/* Parse an auth intent from the hash, e.g. #auth=signup from the landing page. */
+/* Share-link runs, once per page load (F12): back/forward to an already-run
+   #tab=health&url= hash must prefill the tab but NOT re-run (and re-save)
+   the check — each re-run burned one of a Free user's 5 monthly audits. */
+const shareRuns = new Set();
+/* Parse an auth intent from the hash, e.g. #auth=signup from the landing page.
+   It may sit after another hash parameter, so match auth= after # or &. */
 function parseAuthHash(hash){
-  const m = String(hash||"").match(/#auth=(signin|signup)/);
+  const m = String(hash||"").match(/(?:#|&)auth=(signin|signup)/);
   return m ? m[1] : "";
 }
 document.querySelectorAll("button[data-tab]").forEach(b => b.addEventListener("click", () => showTab(b.dataset.tab, true)));
@@ -190,8 +230,26 @@ document.querySelectorAll("[data-goto]").forEach(b => b.addEventListener("click"
    deep links, hashchange) replaceState() instead, so they never add entries. */
 if(typeof window.addEventListener === "function"){
   window.addEventListener("hashchange", () => {
+    /* A share link pasted while already in the app: prefill the Health Check
+       and run it — a full page load does this in initAppFromUrl, but without
+       this branch the hash only switched tabs and the URL was never run. */
+    const shared = parseShareHash(location.hash);
+    if(shared){
+      if(!isGuestMode() && !hasSavedSession() && !currentUser) enterGuestMode();
+      else showApp();
+      showTab("health");
+      const el = $("hcUrl"); if(el) el.value = shared;
+      const key = "health|" + shared;
+      if(!shareRuns.has(key)){ shareRuns.add(key); runHealth(); }
+      return;
+    }
     const t = parseTabHash(location.hash);
     if(t) showTab(t);
+    /* An unknown #tab= value never leaves the user on a stale tab while the
+       address bar says something else: fall back to the Dashboard with a
+       one-line note. (A hash with no tab= at all — e.g. #pricing carried over
+       from the landing — is left alone.) */
+    else if(/(?:#|&)tab=/.test(location.hash||"")){ showTab("dashboard"); showBanner("Unknown section — showing the Dashboard.", "warn"); }
     const a = parseAuthHash(location.hash);
     if(a) showAuthView(a);
     else if(/#guest\b/.test(location.hash||"")) showApp();
@@ -200,7 +258,19 @@ if(typeof window.addEventListener === "function"){
 function showTab(name, push){
   document.querySelectorAll("button[data-tab]").forEach(b => b.classList.toggle("active", b.dataset.tab===name));
   document.querySelectorAll("section.tab").forEach(s => s.classList.toggle("active", s.id==="tab-"+name));
-  try{ if(push && history.pushState) history.pushState(null, "", "#tab=" + name); else history.replaceState(null, "", "#tab=" + name); }catch(e){}
+  try{
+    /* Keep a present &url= share param ONLY on the Health tab, so copying
+       the address bar after a tab switch still shares the check. On any
+       other tab &url= is a dead share link (parseShareHash requires
+       tab=health) — strip it instead of carrying it around (F12). */
+    let suffix = "";
+    if(name==="health"){
+      const um = String(location.hash||"").match(/(?:#|&)url=([^&]+)/);
+      if(um){ try{ suffix = "&url=" + encodeURIComponent(decodeURIComponent(um[1])); }catch(e){ suffix = "&url=" + um[1]; } }
+    }
+    const hash = "#tab=" + name + suffix;
+    if(push && history.pushState) history.pushState(null, "", hash); else history.replaceState(null, "", hash);
+  }catch(e){}
   if(name==="dashboard"){ renderDashboard(); renderPlanCard(); }
   if(name==="audit"){ renderAuditHistory(); renderLimitNotes(); }
   if(name==="rank"){ renderRankList(); renderLimitNotes(); }
@@ -236,19 +306,34 @@ $("globalSearch").addEventListener("keydown", e => { if(e.key === "Enter"){ e.pr
 $("headerSignInBtn").addEventListener("click", focusAuth);
 $("headerGuestBtn").addEventListener("click", enterGuestMode);
 $("authGuestLink").addEventListener("click", enterGuestMode);
+/* The free-plan monthly limits apply to cloud users on the Free plan only.
+   Every paid tier (Pro, Agency, Business) is unlimited — the old inline
+   checks compared against 'pro' only, which wrongly capped Agency and
+   Business users at the free limits. One helper, used by all four gates. */
+function planLimitApplies(){ return S.mode==='cloud' && !isPaidPlan() && !isAdmin(); }
 $("siteSaveBtn").addEventListener("click", () => {
-  /* The site switcher stores sites; the plan gates the COUNT. Free 1, Pro 3,
-     Agency 10, Business 50 — the settings form offers 10 slots (the UI cap);
-     a Business account needing more than 10 is set up by the owner. Extras
-     past the plan limit are dropped and the message says so honestly. */
+  /* Preserve-not-delete (F2): the plan limit gates how many sites are
+     ACTIVE / visible in the form — it never deletes stored sites. A Business
+     user with 50 sites who downgrades to Agency keeps all 50 stored; 10 are
+     active, 40 are kept (not active) and shown below with a Remove button.
+     A save only ever rewrites the visible window; the kept tail is carried
+     over untouched. Nothing here overwrites a longer stored list with a
+     shorter one. */
   const limit = siteLimitForPlan();
-  const slots = SITE_SLOT_IDS.map(id => $(id) && $(id).value).filter(v => v !== undefined && v !== null);
-  const all = normalizeSiteList(slots);
-  const sites = all.slice(0, limit);
+  const prevSel = LS.get("selectedSite", "");
+  const stored = storedSites();
+  const visible = normalizeSiteList(siteSlotValues().filter(v => v !== undefined && v !== null));
+  const active = visible.slice(0, limit);
+  const notAdded = visible.length - active.length;
+  const kept = stored.slice(limit).filter(x => !active.includes(x));
+  const sites = active.concat(kept);
   LS.set("sites", sites);
-  if(sites.length) LS.set("selectedSite", sites[0]);
-  renderSiteSwitcher(); applySelectedSite();
-  $("siteSaved").textContent = sites.length ? "Saved — " + sites.length + " site(s)" + (all.length > sites.length ? " (" + (all.length - sites.length) + " extra dropped — your " + planDisplayName(currentPlan) + " plan allows " + limit + ")." : ".") : "Saved — no sites.";
+  /* Keep the current selection when it is still in the list (F6) — the old
+     code unconditionally reset it to sites[0] on every save. */
+  if(prevSel && sites.includes(prevSel)) LS.set("selectedSite", prevSel);
+  else if(sites.length) LS.set("selectedSite", sites[0]);
+  renderSiteSwitcher(); applySelectedSite(); loadSiteSlots();
+  $("siteSaved").textContent = sites.length ? "Saved — " + active.length + " active site(s)" + (kept.length ? " · " + kept.length + " extra kept (not active)" : "") + (notAdded ? " · " + notAdded + " entered site(s) not added — your " + planDisplayName(currentPlan) + " plan allows " + limit : "") + "." : "Saved — no sites.";
   setTimeout(() => { $("siteSaved").textContent = ""; }, 5000);
 });
 /* Sidebar: collapse to icons on desktop, drawer on small screens. */
@@ -265,12 +350,23 @@ document.addEventListener("click", e => {
 });
 function handlePaypalReturn(){
   const url = new URL(location.href);
-  if(!url.searchParams.has("subscription_id")) return false;
-  url.searchParams.delete("subscription_id");
-  history.replaceState(null, "", url.toString());
-  try { localStorage.removeItem("syedSuite.paypalSubId"); } catch {}
-  showBanner("A checkout return is not payment verification. Your plan changes only after server confirmation.", "warn");
-  return true;
+  if(url.searchParams.has("subscription_id")){
+    url.searchParams.delete("subscription_id");
+    history.replaceState(null, "", url.toString());
+    try { localStorage.removeItem("syedSuite.paypalSubId"); } catch {}
+    showBanner("A checkout return is not payment verification. Your plan changes only after server confirmation.", "warn");
+    return true;
+  }
+  /* PayPal's cancel return carries only ?token=… (no subscription_id), so
+     without this branch a cancelled checkout returned in silence — the user
+     could not tell whether anything had been charged. */
+  if(url.searchParams.has("token")){
+    url.searchParams.delete("token");
+    history.replaceState(null, "", url.toString());
+    showBanner("Checkout cancelled — no charge was made and your plan is unchanged.", "ok");
+    return true;
+  }
+  return false;
 }
 async function applyPendingPaypalSub(){
   // Clear legacy, untrusted checkout data. Never write entitlements from the browser.
@@ -344,7 +440,7 @@ async function renderAdmin(){
   panel.innerHTML = '<div class="card"><h2>Admin dashboard</h2>'
     + '<h3>Account</h3><p>Signed in as <b>' + esc(currentUser.email||"") + '</b> — <b>Admin — unlimited</b>, no restrictions.</p>'
     + '<h3>Platform health</h3><div id="adminHealth"><p class="muted">Checking platform health…</p></div>'
-    + '<h3>My totals</h3><ul><li>Audits: <b>' + audits.length + '</b></li><li>Keywords tracked: <b>' + kws.length + '</b></li><li>Links verified: <b>' + linkTotal + '</b> across ' + links.length + ' check(s)</li><li>Revenue logged: <b>$' + revTotal.toFixed(2) + '</b> across ' + rev.length + ' entries</li><li>Orders: <b>' + orders.length + '</b></li><li>Content briefs: <b>' + briefs.length + '</b></li><li>Competitor compares: <b>' + Math.floor(comps.length/2) + '</b></li></ul>'
+    + '<h3>My totals</h3><ul><li>Audits: <b>' + audits.length + '</b></li><li>Keywords tracked: <b>' + kws.length + '</b></li><li>Links verified: <b>' + linkTotal + '</b> across ' + links.length + ' check(s)</li><li>Revenue logged: <b>$' + revTotal.toFixed(2) + '</b> across ' + rev.length + ' entries</li><li>Orders: <b>' + orders.length + '</b></li><li>Content briefs: <b>' + briefs.length + '</b></li><li>Competitor compares: <b>' + v25Usage().comparesUsed + '</b></li></ul>'
     + '<h3>PayPal</h3><div id="adminPay"><p class="muted">Checking PayPal status…</p></div>'
     + '<h3>Users (counts only)</h3><div id="adminUsers"><p class="muted">Loading user counts…</p></div>'
     + '</div>';
@@ -452,6 +548,7 @@ async function loadCloudData(){
      database delete is needed to fix the duplicate. */
   S.cache.competitors = dedupeCompetitors(competitors.map(c => ({ id:c.id, date:(c.created_at||"").slice(0,10), url:c.url||"" })));
   S.cache.toolChecks = siteChecks.map(t => ({ id:t.id, date:(t.created_at||"").slice(0,10), type:t.check_type||"", url:t.url||"", summary:(t.result && t.result.summary)||"" }));
+  cloudDataLoaded = true; cloudDataFailed = false;
 }
 function groupVerifiedRows(rows){
   const map = new Map();
@@ -477,13 +574,28 @@ async function cloudInsertAudit(a){
 let authGeneration = 0;
 let signInTask = null;
 let signingInId = null;
+/* Guest data lives under the un-namespaced keys ("syedSuite.audits", ...).
+   Never auto-upload it into an account — but say so on first sign-in, or
+   the user sees an empty Dashboard and thinks their work vanished. */
+function guestStoreHasData(){
+  try{
+    return ["audits","keywords","links","revenue","listings","orders","briefs","competitors","toolChecks"].some(k => {
+      const raw = localStorage.getItem("syedSuite." + k);
+      if(!raw) return false;
+      const v = JSON.parse(raw);
+      return Array.isArray(v) && v.length > 0;
+    });
+  }catch(e){ return false; }
+}
 async function afterSignIn(user){
   if(!user) return;
+  const guestHadData = guestStoreHasData();
   if(cloudUserId === user.id && currentUser?.id === user.id) return;
   if(currentUser?.id !== user.id) cancelPendingRequests();
   if(signInTask && signingInId === user.id) return signInTask;
   const generation = ++authGeneration;
   cloudUsage = null;
+  cloudDataLoaded = false; cloudDataFailed = false;
   currentUser = user;
   S.mode = "cloud";
   S.cache = { audits:[], keywords:[], links:[], revenue:[], listings:[], orders:[], briefs:[], competitors:[], toolChecks:[] };
@@ -498,6 +610,13 @@ async function afterSignIn(user){
     await applyPendingPaypalSub();
     try{ localStorage.removeItem(GUEST_KEY); }catch(e){}
     refreshAuthUI(); showApp(); renderAll(); loadPreferences();
+    /* First sign-in with guest work in this browser: explain where it is.
+       Once per account — the flag lives in the per-user store, so a later
+       reload does not nag again. */
+    if(guestHadData && !LS.get("guestBannerShown", false)){
+      LS.set("guestBannerShown", true);
+      showBanner("Your guest work stays in this browser — export it from Workspace settings or re-run it to save it to your account.", "warn");
+    }
     /* A share link that waited for sign-in ("Save this audit"): run the check
        now so it saves to the new account. */
     if(pendingShareUrl){
@@ -508,7 +627,7 @@ async function afterSignIn(user){
     $("authPass").value = "";
   })();
   try { await signInTask; }
-  catch(e){ if(generation === authGeneration) showBanner("Account data could not load. Reload to retry. " + e.message, "warn"); }
+  catch(e){ if(generation === authGeneration){ cloudDataFailed = true; showBanner("Account data could not load. Reload to retry. " + e.message, "warn"); renderAll(); } }
   finally { if(generation === authGeneration){ signInTask = null; signingInId = null; } }
 }
 
@@ -558,6 +677,7 @@ function clearAuthState(){
   cancelPendingRequests();
   ++authGeneration; signInTask = null; signingInId = null;
   cloudUsage = null;
+  cloudDataLoaded = false; cloudDataFailed = false;
   currentUser = null; currentPlan = "free"; cloudUserId = null; S.mode = "local";
   S.cache = { audits:[], keywords:[], links:[], revenue:[], listings:[], orders:[], briefs:[], competitors:[], toolChecks:[] };
   refreshAuthUI(); showLanding(); renderAll(); loadPreferences();
@@ -644,7 +764,17 @@ function renderLimitNotes(){
     const uid=currentUser.id;
     sb.rpc("current_usage").then(({data,error})=>{
       if(!error && data && currentUser?.id===uid){
-        cloudUsage=data;
+        /* The RPC's comparesUsed is derived from competitor ROWS server-side
+           (see deploy item D-c) and undercounts re-compares of tracked URLs,
+           so it must never overwrite the client run-count: compares are
+           counted by RUNS in v25Usage()/toolChecks. Once the account data has
+           loaded, the client count is authoritative here. */
+        let comparesUsed = data.comparesUsed;
+        if(cloudDataLoaded){
+          const m = thisMonthPrefix();
+          comparesUsed = S.get("toolChecks", []).filter(t => (t.date||"").indexOf(m)===0 && t.type==="compare").length;
+        }
+        cloudUsage = Object.assign({}, data, {comparesUsed});
         document.querySelectorAll(".limit-note").forEach(el=>el.textContent=limitNoteText());
         renderPlanCard();
       }
@@ -727,11 +857,12 @@ async function startCheckout(planKey){
 }
 
 /* ---------- fetch helpers (honest errors, proxy fallback) ---------- */
-function fetchTimeout(url, ms){
+function fetchTimeout(url, ms, scope){
   const c = new AbortController();
-  activeRequests.add(c);
+  const set = scope || activeRequests;
+  set.add(c);
   const t = setTimeout(() => c.abort(), ms);
-  return fetch(url, {signal:c.signal}).finally(() => { clearTimeout(t); activeRequests.delete(c); });
+  return fetch(url, {signal:c.signal}).finally(() => { clearTimeout(t); set.delete(c); });
 }
 const PROXIES = [
   u => "https://api.allorigins.win/raw?url=" + encodeURIComponent(u),
@@ -746,11 +877,11 @@ function isProxyErrorPage(status, text){
    Returns {status, text} plus, when our proxy served it, {ttfbMs, totalMs, bytes, headers}
    (timings the free proxies cannot provide). Status codes from a proxy usually mirror
    the target; 500/522/408 are proxy failures, not proof the site is down. */
-async function fetchViaProxy(url, timeoutMs){
+async function fetchViaProxy(url, timeoutMs, scope){
   let lastErr = null;
   /* Own server-side proxy first (reliable); free public proxies as fallback. */
   try{
-    const res = await fetchJsonTimeout(SUPABASE_URL+"/functions/v1/fetch-proxy", timeoutMs||15000, {method:"POST",headers:{"Content-Type":"application/json",apikey:SUPABASE_PUBLISHABLE_KEY,Authorization:"Bearer "+SUPABASE_PUBLISHABLE_KEY},body:JSON.stringify({url})});
+    const res = await fetchJsonTimeout(SUPABASE_URL+"/functions/v1/fetch-proxy", timeoutMs||15000, {method:"POST",headers:{"Content-Type":"application/json",apikey:SUPABASE_PUBLISHABLE_KEY,Authorization:"Bearer "+SUPABASE_PUBLISHABLE_KEY},body:JSON.stringify({url})}, scope);
     const data = await res.json().catch(()=>({}));
     /* A 403/429 from OUR edge proxy means the TARGET blocked the Supabase
        datacenter IP — not that the page is down. Fall through to the free
@@ -764,7 +895,7 @@ async function fetchViaProxy(url, timeoutMs){
   }catch(e){ lastErr = e; }
   for(const p of PROXIES){
     try{
-      const res = await fetchTimeout(p(url), timeoutMs||15000);
+      const res = await fetchTimeout(p(url), timeoutMs||15000, scope);
       const text = await res.text();
       if(isProxyErrorPage(res.status, text)){ lastErr = new Error("Proxy error (HTTP "+res.status+" from the free proxy — the target site may still be fine)"); continue; }
       return { status: res.status, ok: res.ok, text };
@@ -784,7 +915,7 @@ function sparklineSVG(values, w, h){
   const min = Math.min.apply(null, vals), max = Math.max.apply(null, vals);
   const span = (max - min) || 1;
   const pts = vals.map((v,i) => ((pad + i*(W-2*pad)/(vals.length-1)).toFixed(1) + "," + (H - pad - (v-min)/span*(H-2*pad)).toFixed(1))).join(" ");
-  return '<svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Trend"><polyline points="' + pts + '" fill="none" stroke="#0f766e" stroke-width="2"/></svg>';
+  return '<svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Trend"><polyline points="' + pts + '" fill="none" style="stroke:var(--accent)" stroke-width="2"/></svg>';
 }
 /* Skeleton rows while a proxy fetch runs — a visible loading state, not just a
    dimmed button. Rendered into the results area and replaced by the first
@@ -795,6 +926,15 @@ function skeletonHtml(n){
   return '<div class="skel" aria-hidden="true">' + bars + '</div>';
 }
 function renderDashboard(){
+  /* Cloud mode before the account data has loaded (or after a failed load):
+     the cache holds the empty reset — show "—", never genuine-looking zeros.
+     Local/guest mode reads localStorage, which is always present. */
+  if(S.mode === "cloud" && !cloudDataLoaded){
+    ["stAudits","stKeywords","stLinks","stRevenue","stOrders"].forEach(id => { const el = $(id); if(el) el.textContent = "—"; });
+    const dh = $("dashHealth");
+    if(dh) dh.innerHTML = '<p class="muted">' + (cloudDataFailed ? "Account data could not load — reload to retry. Nothing below is a real zero yet." : "Loading your account data…") + '</p>';
+    return;
+  }
   const audits = S.get("audits", []);
   const kws = S.get("keywords", []);
   const links = S.get("links", []);
@@ -806,7 +946,8 @@ function renderDashboard(){
      link total, with the check count in the title — the old code showed the
      observation count, so one 42-link check read as "1 links verified". */
   const linkTotal = links.reduce((a,g)=>a+((g&&g.count)||0),0);
-  $("stLinks").textContent = linkTotal;
+  /* The check count is visible, not tooltip-only: "42 links · 1 check". */
+  $("stLinks").textContent = linkTotal + " · " + links.length + " check" + (links.length===1?"":"s");
   const stLinksStat = $("stLinksStat");
   if(stLinksStat) stLinksStat.title = links.length + " link check(s) — " + linkTotal + " links found";
   $("stRevenue").textContent = "$" + rev.reduce((a,r)=>a+(+r.amount||0),0).toFixed(2);
@@ -880,16 +1021,28 @@ function renderDashboard(){
 
 /* ---------- Site Audit ---------- */
 const normaliseSite = SEOForgeCore.normaliseSite;
+/* Overall audit deadline (120 s) + cancel: the sitemap crawl used to run
+   unbounded (up to ~6 min on 50 slow URLs) with no way to stop it. */
+const AUDIT_DEADLINE_MS = 120000;
+let auditCancelled = false;
+document.addEventListener("click", e => {
+  const t = e.target.closest('[data-action="cancel-audit"]');
+  if(t){ e.preventDefault(); auditCancelled = true; cancelAuditRequests(); const p = $("auditProg"); if(p) p.textContent = "Cancelling…"; }
+});
 
 async function runAudit(psiOnly){
   const btn = $("auditBtn"), psiBtn = $("psiBtn");
+  auditCancelled = false;
   btn.disabled = true; psiBtn.disabled = true;
   const out = $("auditOut"), prog = $("auditProg");
   out.innerHTML = ""; prog.textContent = "";
   const site = normaliseSite($("auditUrl").value);
   if(!site){ out.innerHTML = '<div class="err">Enter a site URL first.</div>'; btn.disabled=false; psiBtn.disabled=false; return; }
+  /* Remember the last-run URL (guest-safe localStorage) so a reload keeps
+     the field filled while the completed audit stays in history. */
+  try{ LS.set("lastAuditUrl", site); }catch(e){}
   /* Free-plan limit: 5 audits per calendar month (cloud counts only). */
-  if(S.mode==='cloud' && currentPlan!=='pro' && !isAdmin()){
+  if(planLimitApplies()){
     const used = usageThisMonth().auditsUsed;
     if(used >= PLAN_LIMITS.auditsPerMonth){
       out.innerHTML = '<div class="warn"><b>Free plan limit reached.</b> You have used ' + used + ' of ' + PLAN_LIMITS.auditsPerMonth + ' site audits this month. <button class="btn small" data-action="upgrade">Upgrade to Pro — $9/month</button> for unlimited audits.</div>';
@@ -899,13 +1052,29 @@ async function runAudit(psiOnly){
   const strategy = $("psiStrategy").value;
   const limit = Math.max(5, Math.min(50, parseInt($("auditLimit").value||"50",10)));
   const started = Date.now();
+  /* One deadline for the WHOLE run (F13): crawl + Speed Score + PageSpeed
+     share a single 120 s budget measured from run start — the old code
+     measured 120 s for the crawl only, so a full audit could run ~260 s. */
+  const deadline = started + AUDIT_DEADLINE_MS;
+  /* Run-scoped cancellation (F3/F4): this run's requests register in their
+     own set; Cancel aborts only them. */
+  auditRunScope = new Set();
+  const scope = auditRunScope;
+  /* Speed Score of the full audit (null in PageSpeed-only mode) — carried
+     into lastAudit so the share card leads with the stable measurement. */
+  let sfScore = null, sfGrade = null;
   out.innerHTML = skeletonHtml(3);
+  /* The Cancel button lives in #auditCancelWrap, OUTSIDE #auditOut: the
+     crawl render used to replace out.innerHTML and delete the button, so
+     there was no Cancel for the Speed Score + PageSpeed tail (F3). */
+  const cancelWrap = $("auditCancelWrap");
+  if(cancelWrap) cancelWrap.innerHTML = '<p><button class="btn secondary" data-action="cancel-audit">Cancel audit</button></p>';
   try{
     let urls = [], sitemapNote = "";
     if(!psiOnly){
       const sitemapUrl = /\.xml(\?|$)/i.test(site) ? site : site + "/sitemap.xml";
       prog.textContent = "Fetching sitemap: " + sitemapUrl + " …";
-      const sm = await fetchViaProxy(sitemapUrl, 20000);
+      const sm = await fetchViaProxy(sitemapUrl, 20000, scope);
       if(sm.status === 404){ throw new Error("Sitemap not found at " + sitemapUrl + " (HTTP 404). Check the URL — some sites use a different sitemap path."); }
       if(!sm.ok){ throw new Error("Sitemap fetch failed (HTTP " + sm.status + "). The free proxy may be having trouble — retry, or paste the sitemap URL directly."); }
       const doc = new DOMParser().parseFromString(sm.text, "application/xml");
@@ -915,61 +1084,92 @@ async function runAudit(psiOnly){
         if(idx.length){
           sitemapNote = "This is a sitemap index with " + idx.length + " child sitemaps. Checking the first one: " + esc(idx[0]);
           prog.textContent = "Sitemap index found — fetching first child sitemap …";
-          const child = await fetchViaProxy(idx[0], 20000);
+          const child = await fetchViaProxy(idx[0], 20000, scope);
+          /* Same status check as the parent fetch above: a 404/error page
+             must never be parsed as a sitemap. */
+          if(child.status === 404 || !child.ok) throw new Error("Child sitemap fetch failed (HTTP " + child.status + "). The sitemap index points at a child that could not be fetched.");
           const cdoc = new DOMParser().parseFromString(child.text, "application/xml");
+          /* Validate the parsed document: an HTML error/placeholder page
+             parses as XML with a <parsererror> (or a non-sitemap root), and
+             its <loc>-shaped markup would otherwise be audited as real URLs. */
+          if(cdoc.querySelector("parsererror") || !cdoc.documentElement || !/^(urlset|sitemapindex)$/i.test(cdoc.documentElement.tagName || "")) throw new Error("Child sitemap did not return a valid sitemap — the page fetched is not a sitemap (it may be an error page).");
           urls = [...cdoc.querySelectorAll("url > loc")].map(n => n.textContent.trim()).filter(Boolean);
         }
       }
       if(!urls.length){ throw new Error("No URLs found in the sitemap. It may be empty, or in a format this parser does not read."); }
       urls = urls.slice(0, limit);
       prog.textContent = "Sitemap OK — " + urls.length + " URLs found. Checking each one (in batches) …";
-      // status-check in batches of 5
+      // status-check in batches of 5, bounded by the overall deadline
       const results = new Array(urls.length);
       const BATCH = 5;
-      for(let i=0;i<urls.length;i+=BATCH){
+      let checkedN = 0, stoppedEarly = false;
+      for(let i=0;i<urls.length && !auditCancelled && Date.now()<deadline;i+=BATCH){
         const slice = urls.slice(i, i+BATCH);
         await Promise.all(slice.map(async (u, j) => {
           try{
-            const r = await fetchViaProxy(u, 12000);
+            const r = await fetchViaProxy(u, 12000, scope);
             results[i+j] = { url:u, status:r.status, ok:r.ok };
           }catch(e){ results[i+j] = { url:u, status:null, ok:false, err:String(e.message||e) }; }
         }));
-        prog.textContent = "Checked " + Math.min(i+BATCH, urls.length) + " of " + urls.length + " URLs …";
+        checkedN = Math.min(i+BATCH, urls.length);
+        prog.textContent = "Checked " + checkedN + " of " + urls.length + " URLs …";
       }
-      const okN = results.filter(r=>r.ok).length;
-      const failN = results.length - okN;
-      let rows = results.map(r => {
+      stoppedEarly = checkedN < urls.length;
+      const stopNote = stoppedEarly
+        ? (auditCancelled
+          ? "Audit cancelled — " + checkedN + " of " + urls.length + " URLs checked. The results below are partial."
+          : "Stopped after 120 s — " + checkedN + " of " + urls.length + " URLs checked. The results below are partial; re-run with a smaller URL limit to cover the rest.")
+        : "";
+      const done = results.slice(0, checkedN);
+      const okN = done.filter(r=>r.ok).length;
+      const failN = done.length - okN;
+      let rows = done.map(r => {
         const pill = r.ok ? '<span class="pill ok">OK ' + r.status + '</span>'
           : (r.status ? '<span class="pill bad">HTTP ' + r.status + '</span>' : '<span class="pill warn">Proxy error</span>');
         return "<tr><td>" + esc(r.url) + "</td><td>" + pill + "</td><td class='muted'>" + (r.ok ? "" : esc(r.err||"")) + "</td></tr>";
       }).join("");
-      out.innerHTML = '<div class="card" style="margin-top:10px"><h3>Sitemap crawl — ' + urls.length + ' URLs</h3>'
+      out.innerHTML = '<div class="card" style="margin-top:10px"><h3>Sitemap crawl — ' + checkedN + ' URLs</h3>'
         + (sitemapNote ? '<p class="muted">'+sitemapNote+'</p>' : '')
+        + (stopNote ? '<p class="warn">' + esc(stopNote) + '</p>' : '')
         + '<p><span class="pill ok">' + okN + ' reachable</span> <span class="pill bad">' + failN + ' failed / proxy errors</span></p>'
         + measuredLine('each URL was fetched live through the server-side proxy; the status is the real HTTP status the page returned')
         + '<p class="muted">“Proxy error” means the free proxy could not fetch that URL — it does not prove the page is down. Retry if you see many of them.</p>'
         + '<div style="overflow-x:auto"><table><tr><th>URL</th><th>Status</th><th>Note</th></tr>' + rows + '</table></div></div>';
-      const rec = { date:todayISO(), url:site, total:urls.length, ok:okN, failed:failN, psi:null, lcp:null, cls:null };
-      if(S.mode==='cloud'){
-        const id = await cloudInsertAudit(rec);
-        if(id){ rec.id = id; } else { out.innerHTML += '<div class="warn">This audit ran, but saving it to your account failed — the result above is still valid.</div>'; }
-        S.cache.audits = [rec].concat(S.cache.audits).slice(0,20);
-      }else{
-        LS.set("audits", [rec].concat(LS.get("audits", [])).slice(0,20));
+      const rec = { date:todayISO(), url:site, total:checkedN, ok:okN, failed:failN, psi:null, lcp:null, cls:null };
+      /* A save failure (cloud insert error, or a full/disabled localStorage)
+         must never erase a good result: warn and keep the table above. */
+      try{
+        if(S.mode==='cloud'){
+          const id = await cloudInsertAudit(rec);
+          if(id){ rec.id = id; } else { out.innerHTML += '<div class="warn">This audit ran, but saving it to your account failed — the result above is still valid.</div>'; }
+          S.cache.audits = [rec].concat(S.cache.audits).slice(0,20);
+        }else{
+          LS.set("audits", [rec].concat(LS.get("audits", [])).slice(0,20));
+        }
+      }catch(e){
+        out.innerHTML += '<div class="warn">This audit ran, but saving it failed — the result above is still valid.</div>';
       }
+      /* Deadline / cancel: stop here with the partial results above — no
+         Speed Score or PageSpeed phase after the overall deadline. */
+      if(stoppedEarly){ prog.textContent = "Stopped — partial results above."; return; }
       // SEOForge Speed Score (our own measurement) — runs even when PageSpeed quota is out.
+      // Kept in sfScore/sfGrade so the share card can lead with the stable
+      // measurement instead of Google's run-to-run PageSpeed number.
+      if(auditCancelled || Date.now() >= deadline){ prog.textContent = auditCancelled ? "Cancelled — partial results above." : "Stopped at the 120 s overall deadline — partial results above."; return; }
       prog.textContent = "Measuring SEOForge Speed Score…";
       try{
-        const sf = seoforgeSpeedScore(await fetchPageDoc(site, 20000));
+        const sf = seoforgeSpeedScore(await fetchPageDoc(site, 20000, scope));
+        sfScore = sf.score; sfGrade = sf.grade;
         out.innerHTML += speedScoreHtml(sf);
-      }catch(e){ out.innerHTML += '<div class="muted">SEOForge Speed Score could not be measured — ' + esc(e.message||e) + '</div>'; }
+      }catch(e){ if(auditCancelled) return; out.innerHTML += '<div class="muted">SEOForge Speed Score could not be measured — ' + esc(e.message||e) + '</div>'; }
     }
-    // PageSpeed
+    // PageSpeed — still inside the same overall deadline (F13).
+    if(auditCancelled || Date.now() >= deadline){ prog.textContent = auditCancelled ? "Cancelled — partial results above." : "Stopped at the 120 s overall deadline — partial results above."; return; }
     prog.textContent = "Running PageSpeed Insights (" + strategy + ") — this can take up to a minute …";
-    const psi = await runPSI(site, strategy);
+    const psi = await runPSI(site, strategy, scope);
     if(psiOnly) out.innerHTML = "";
     out.innerHTML += psiHtml(psi, site, strategy);
-    lastAudit = { site, score: psi.score, lcp: psi.lcp, cls: psi.cls, date: todayISO() };
+    lastAudit = { site, score: psi.score, sfScore, sfGrade, lcp: psi.lcp, cls: psi.cls, date: todayISO(), time: runClockTime() };
     out.innerHTML += shareBarHtml(lastAudit);
     prog.textContent = "Done in " + Math.round((Date.now()-started)/1000) + "s.";
     const audits = S.get("audits", []);
@@ -984,10 +1184,19 @@ async function runAudit(psiOnly){
     }
     renderLimitNotes();
   }catch(e){
-    out.innerHTML += '<div class="err"><b>Check failed:</b> ' + esc(e.message||e) + '</div>';
-    prog.textContent = "";
+    if(auditCancelled){
+      /* A cancel is not a failure: keep whatever partial results rendered
+         and say so plainly, instead of stamping "Check failed" on them. */
+      prog.textContent = "Cancelled — partial results above.";
+      out.innerHTML += '<div class="muted">Audit cancelled — the results above are partial.</div>';
+    }else{
+      out.innerHTML += '<div class="err"><b>Check failed:</b> ' + esc(e.message||e) + '</div>';
+      prog.textContent = "";
+    }
   }finally{
     btn.disabled = false; psiBtn.disabled = false;
+    const w = $("auditCancelWrap"); if(w) w.innerHTML = "";
+    auditRunScope = null;
     renderAuditHistory();
   }
 }
@@ -1004,11 +1213,16 @@ function pagespeedRoute(){
   const key = (LS.get("settings", {}).psiKey||"").trim();
   return key ? { via:"direct", key } : { via:"edge" };
 }
-async function runPSI(url, strategy){
+async function runPSI(url, strategy, scope, timeoutMs){
+  /* timeoutMs defaults to the usual 120 s; the Redirects tool passes the
+     time left on its 60 s overall cap (F15), so that leg can never push the
+     tool past the cap. */
+  timeoutMs = timeoutMs || 120000;
+  if(auditCancelled) throw new Error("Audit cancelled");
   const route = pagespeedRoute();
-  if(route.via === "direct") return runPSIDirect(url, strategy, route.key);
+  if(route.via === "direct") return runPSIDirect(url, strategy, route.key, scope, timeoutMs);
   try{
-    const res = await fetchJsonTimeout(PAGESPEED_FN, 120000, {method:"POST", headers:{"Content-Type":"application/json", apikey:SUPABASE_PUBLISHABLE_KEY, Authorization:"Bearer "+SUPABASE_PUBLISHABLE_KEY}, body:JSON.stringify({url, strategy})});
+    const res = await fetchJsonTimeout(PAGESPEED_FN, timeoutMs, {method:"POST", headers:{"Content-Type":"application/json", apikey:SUPABASE_PUBLISHABLE_KEY, Authorization:"Bearer "+SUPABASE_PUBLISHABLE_KEY}, body:JSON.stringify({url, strategy})}, scope);
     const data = await res.json().catch(()=>({}));
     if(res.ok) return { score:data.score, lcp:data.lcp||null, cls:data.cls||null, seo:data.seo||[], finalUrl:data.finalUrl||url };
     /* 404 = function not deployed yet; 400 + "not configured" = the server
@@ -1021,19 +1235,27 @@ async function runPSI(url, strategy){
       throw new Error(data.error || ("PageSpeed service error (HTTP " + res.status + ")"));
     }
   }catch(e){
+    /* A cancel abort must never fall through to the direct call (that
+       re-ran the whole 120 s PageSpeed leg after the user cancelled). */
+    if(auditCancelled) throw new Error("Audit cancelled");
     /* Network-level failure reaching the edge function also falls back. A
        deliberate throw above (real edge error) is re-thrown, not swallowed:
        its message never matches the network patterns. */
     if(e.message && !/Failed to fetch|NetworkError|timed out|abort|Load failed/i.test(e.message)) throw e;
   }
-  return runPSIDirect(url, strategy, "");
+  return runPSIDirect(url, strategy, "", scope, timeoutMs);
 }
-async function runPSIDirect(url, strategy, key){
-  let api = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=" + encodeURIComponent(url) + "&strategy=" + strategy;
+async function runPSIDirect(url, strategy, key, scope, timeoutMs){
+  timeoutMs = timeoutMs || 120000;
+  /* Ask for the SEO category explicitly: without a category parameter the
+     PageSpeed API runs Performance only, so the "SEO checks" section was
+     always empty. The edge function needs the same two parameters (reported
+     separately — that file is deploy-only in this round). */
+  let api = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=" + encodeURIComponent(url) + "&strategy=" + strategy + "&category=performance&category=seo";
   if(key) api += "&key=" + encodeURIComponent(key);
   let res;
-  try{ res = await fetchTimeout(api, 120000); }
-  catch(e){ throw new Error("PageSpeed request timed out after 120s. Google's service may be slow — retry."); }
+  try{ res = await fetchTimeout(api, timeoutMs, scope); }
+  catch(e){ throw new Error("PageSpeed request timed out after " + Math.round(timeoutMs/1000) + "s. Google's service may be slow — retry."); }
   let data = {};
   try{ data = await res.json(); }catch(e){ throw new Error("PageSpeed returned an unreadable response (HTTP " + res.status + ")."); }
   if(!res.ok){
@@ -1065,6 +1287,10 @@ async function runPSIDirect(url, strategy, key){
      audit of the same URL, so improvement is visible in the history. Pure,
      so it is unit testable. */
 function runStamp(){ try{ return new Date().toLocaleString("en-GB", {day:"numeric", month:"short", hour:"2-digit", minute:"2-digit"}); }catch(e){ return ""; } }
+/* Clock time of a run (HH:MM) — stamped next to a Google PageSpeed number so
+   a shared score is never read as a stable badge: Google's score varies run
+   to run, while our Speed Score is deterministic from the same page fetch. */
+function runClockTime(){ try{ return new Date().toLocaleTimeString("en-GB", {hour:"2-digit", minute:"2-digit"}); }catch(e){ return ""; } }
 function measuredLine(text){ return '<p class="muted">How this is measured: ' + text + ' — checked just now (' + runStamp() + ').</p>'; }
 function pagespeedVerifyUrl(url){ return "https://pagespeed.web.dev/analysis?url=" + encodeURIComponent(url); }
 function psiDeltaFor(list, i){
@@ -1079,9 +1305,24 @@ function scoreRingSVG(score, size){
   const s = score==null ? null : Math.max(0, Math.min(100, Math.round(score)));
   const r = 34, c = 2*Math.PI*r;
   const frac = s==null ? 0 : s/100;
-  const color = s==null ? "#94a3b8" : s>=90 ? "#15803d" : s>=70 ? "#0f766e" : s>=50 ? "#b45309" : "#b91c1c";
+  /* Score bands keep their meaning (Excellent green, Needs work amber,
+     Poor red) — except the Good band, which IS the accent: it was the
+     hardcoded teal #0f766e, so it now follows the user's pick through
+     --accent (inline style, so the ring re-themes live with no re-render).
+     The track circle stays neutral; the number inherits currentColor. */
+  const isAccentBand = s!=null && s>=70 && s<90;
+  /* F1: a light accent's ring (stroke var(--accent)) is invisible on the
+     white card — when the accent takes dark ink, the ring takes the darkened
+     readable form instead. Purple/orange keep the plain accent stroke. */
+  let ringVar = "var(--accent)";
+  try{
+    if(typeof getComputedStyle === "function" && typeof document !== "undefined" && document.documentElement){
+      if(getComputedStyle(document.documentElement).getPropertyValue("--accent-on").trim() === "#111827") ringVar = "var(--accent-dark)";
+    }
+  }catch(e){}
+  const color = s==null ? "#94a3b8" : s>=90 ? "#15803d" : s>=70 ? null : s>=50 ? "#b45309" : "#b91c1c";
   const sz = size||96;
-  return '<svg width="'+sz+'" height="'+sz+'" viewBox="0 0 96 96" role="img" aria-label="Score '+(s==null?"not scored":s+" out of 100")+'"><circle cx="48" cy="48" r="'+r+'" fill="none" stroke="#e5e7eb" stroke-width="9"/><circle cx="48" cy="48" r="'+r+'" fill="none" stroke="'+color+'" stroke-width="9" stroke-linecap="round" stroke-dasharray="'+(c*frac).toFixed(1)+" "+c.toFixed(1)+'" transform="rotate(-90 48 48)"/><text x="48" y="52" text-anchor="middle" font-size="22" font-weight="800" fill="currentColor">'+(s==null?"—":s)+'</text><text x="48" y="68" text-anchor="middle" font-size="11" fill="currentColor">/ 100</text></svg>';
+  return '<svg width="'+sz+'" height="'+sz+'" viewBox="0 0 96 96" role="img" aria-label="Score '+(s==null?"not scored":s+" out of 100")+'"><circle cx="48" cy="48" r="'+r+'" fill="none" stroke="#e5e7eb" stroke-width="9"/><circle class="score-ring" cx="48" cy="48" r="'+r+'" fill="none" '+(isAccentBand ? 'style="stroke:'+ringVar+'"' : 'stroke="'+color+'"')+' stroke-width="9" stroke-linecap="round" stroke-dasharray="'+(c*frac).toFixed(1)+" "+c.toFixed(1)+'" transform="rotate(-90 48 48)"/><text x="48" y="52" text-anchor="middle" font-size="22" font-weight="800" fill="currentColor">'+(s==null?"—":s)+'</text><text x="48" y="68" text-anchor="middle" font-size="11" fill="currentColor">/ 100</text></svg>';
 }
 function psiHtml(psi, site, strategy){
   let seoRows = psi.seo.map(s => {
@@ -1129,8 +1370,9 @@ async function suggestOne(q){
     const r = await fetchTimeout(api, 8000);
     if(r.ok){ const j = await r.json(); return j[1]||[]; }
   }catch(e){ /* CORS or network — fall through to proxy */ }
-  const { text } = await fetchViaProxy(api, 12000);
-  const j = JSON.parse(text);
+  const r = await fetchViaProxy(api, 12000);
+  if(r.status && (r.status < 200 || r.status >= 300)) throw new Error("Google Suggest returned HTTP " + r.status + " — it may be blocking automated requests.");
+  const j = JSON.parse(r.text);
   return j[1]||[];
 }
 async function runKeywords(){
@@ -1164,11 +1406,19 @@ async function runKeywords(){
       + '<table><tr><th>Suggestion</th><th></th></tr>' + items.map(s =>
         '<tr><td>' + esc(s) + '</td><td><button class="btn small secondary" data-save-kw="' + esc(s) + '">Save to tracker</button> <button class="btn small secondary" data-diff-kw="' + esc(s) + '">Difficulty</button></td></tr>').join("") + '</table>';
     out.querySelectorAll("[data-save-kw]").forEach(b => b.addEventListener("click", async () => {
+      if(b.disabled) return;
       if(!checkKeywordLimit()) return;
-      const res = await saveKeyword(b.dataset.saveKw, "", kwDiffCache[b.dataset.saveKw.toLowerCase()]);
-      if(res === 'saved'){ b.textContent = "Saved ✓"; b.disabled = true; renderRankList(); renderDashboard(); renderLimitNotes(); }
-      else if(res === 'duplicate'){ b.textContent = "Already tracked"; b.disabled = true; }
-      else { alert("Could not save that keyword — check your connection and retry."); }
+      b.disabled = true; b.textContent = "Saving…";
+      try{
+        const res = await saveKeyword(b.dataset.saveKw, "", kwDiffCache[b.dataset.saveKw.toLowerCase()]);
+        if(res === 'saved'){ b.textContent = "Saved ✓"; renderRankList(); renderDashboard(); renderLimitNotes(); }
+        else if(res === 'duplicate'){ b.textContent = "Already tracked"; }
+        else { b.textContent = "Save failed — retry"; b.disabled = false; }
+      }catch(e){
+        /* F8: a thrown save (full localStorage) used to leave the button
+           reading "Save to tracker" in silence. */
+        b.textContent = "Save failed — retry"; b.disabled = false;
+      }
     }));
     out.querySelectorAll("[data-diff-kw]").forEach(b => b.addEventListener("click", async () => {
       b.disabled = true; b.textContent = "Checking…";
@@ -1192,7 +1442,7 @@ function checkKeywordLimit(){
   if(isAdmin() || S.mode!=='cloud' || isPaidPlan()) return true;
   const used = S.get("keywords", []).length;
   if(used >= PLAN_LIMITS.keywordsTotal){
-    alert("Free plan: you are tracking " + used + " of " + PLAN_LIMITS.keywordsTotal + " keywords. Upgrade to Pro ($9/month) for unlimited keywords.");
+    prependNote("rkList", "warn", "Free plan: you are tracking " + used + " of " + PLAN_LIMITS.keywordsTotal + " keywords. Upgrade to Pro ($9/month) for unlimited keywords.");
     return false;
   }
   return true;
@@ -1203,13 +1453,15 @@ async function saveKeyword(keyword, url, difficulty){
   if(S.mode==='cloud'){
     const payload = { user_id:currentUser.id, keyword, url:url||"" };
     if(difficulty != null) payload.difficulty = difficulty;
-    let { data, error } = await sb.from("keywords").insert(payload).select("id").single();
+    let { data, error } = await sb.from("keywords").upsert(payload, { onConflict: "user_id,keyword", ignoreDuplicates: true }).select("id");
     if(error && difficulty != null){
       /* The difficulty column may not exist yet — retry without it. */
-      const r2 = await sb.from("keywords").insert({ user_id:currentUser.id, keyword, url:url||"" }).select("id").single();
+      const r2 = await sb.from("keywords").upsert({ user_id:currentUser.id, keyword, url:url||"" }, { onConflict: "user_id,keyword", ignoreDuplicates: true }).select("id");
       data = r2.data; error = r2.error;
     }
-    if(error || !data){ console.error("keyword save failed", error); return 'error'; }
+    if(error){ console.error("keyword save failed", error); return 'error'; }
+    if(!data || !data.length) return 'duplicate'; /* already tracked (unique constraint) */
+    data = data[0];
     list.push({ id:data.id, keyword, url:url||"", checks:[], difficulty: (difficulty==null?null:difficulty) });
     return 'saved';
   }
@@ -1218,15 +1470,28 @@ async function saveKeyword(keyword, url, difficulty){
   return 'saved';
 }
 $("rkAddBtn").addEventListener("click", async () => {
-  const kw = ($("rkKw").value||"").trim(), url = ($("rkUrl").value||"").trim();
-  if(!kw){ alert("Enter a keyword first."); return; }
-  const list = S.get("keywords", []);
-  if(list.some(k => k.keyword.toLowerCase()===kw.toLowerCase())){ alert("That keyword is already tracked."); return; }
-  if(!checkKeywordLimit()) return;
-  const res = await saveKeyword(kw, url);
-  if(res !== 'saved'){ alert("Could not save that keyword — check your connection and retry."); return; }
-  $("rkKw").value = ""; $("rkUrl").value = "";
-  renderRankList(); renderDashboard(); renderLimitNotes();
+  /* Disabled for the whole save: a double-tap used to insert the keyword
+     twice (both taps passed the duplicate check before either insert
+     landed). The button text is the loading indicator. */
+  const btn = $("rkAddBtn");
+  btn.disabled = true; btn.textContent = "Saving…";
+  try{
+    const kw = ($("rkKw").value||"").trim(), url = ($("rkUrl").value||"").trim();
+    if(!kw){ prependNote("rkList", "err", "Enter a keyword first."); return; }
+    const list = S.get("keywords", []);
+    if(list.some(k => k.keyword.toLowerCase()===kw.toLowerCase())){ prependNote("rkList", "err", "That keyword is already tracked."); return; }
+    if(!checkKeywordLimit()) return;
+    const res = await saveKeyword(kw, url);
+    if(res !== 'saved'){ prependNote("rkList", "err", "Could not save that keyword — check your connection and retry."); return; }
+    $("rkKw").value = ""; $("rkUrl").value = "";
+    renderRankList(); renderDashboard(); renderLimitNotes();
+  }catch(e){
+    /* F8: LS.set throws on full/disabled storage — the old try/finally had
+       no catch, so the click did nothing at all. Say so inline instead. */
+    prependNote("rkList", "err", "Could not save that keyword — " + (e.message||e));
+  }finally{
+    btn.disabled = false; btn.textContent = "Add to tracker";
+  }
 });
 function renderRankList(){
   const list = S.get("keywords", []);
@@ -1268,7 +1533,7 @@ function renderRankList(){
     const item = list2[+b.dataset.delKw];
     if(S.mode==='cloud' && item && item.id){
       const { error } = await sb.from("keywords").delete().eq("id", item.id);
-      if(error){ alert("Could not remove that keyword: " + error.message); return; }
+      if(error){ prependNote("rkList", "err", "Could not remove that keyword: " + error.message); return; }
     }
     list2.splice(+b.dataset.delKw, 1);
     if(S.mode==='local') LS.set("keywords", list2);
@@ -1278,9 +1543,6 @@ function renderRankList(){
 async function checkRank(idx, btn){
   const list = S.get("keywords", []);
   const item = list[idx]; if(!item) return;
-  if(!item.url){ alert("Set a target URL for this keyword first (edit it by removing and re-adding)."); return; }
-  btn.disabled = true; btn.textContent = "Checking…";
-  item.lastError = null;
   /* Inline failure (no alert): the button becomes "Failed — retry" and the
      reason appears in the .rank-check-note span next to it (rendered by
      renderRankList, so it survives re-renders for the rest of the session).
@@ -1293,12 +1555,15 @@ async function checkRank(idx, btn){
       else btn.title = msg;
     }catch(e){}
   };
-  rankNote("Checking Bing results…");
   const failRank = msg => {
     btn.disabled = false; btn.textContent = "Failed — retry";
     item.lastError = msg;
     rankNote("Rank check failed: " + msg + " — the search source may be blocked; retry later.");
   };
+  if(!item.url){ failRank("Set a target URL for this keyword first (edit it by removing and re-adding)."); return; }
+  btn.disabled = true; btn.textContent = "Checking…";
+  item.lastError = null;
+  rankNote("Checking Bing results…");
   try{
     const target = normHost(new URL(item.url.startsWith("http")?item.url:"https://"+item.url).hostname);
     const results = await serpTopResults(item.keyword, 10, 15000);
@@ -1344,7 +1609,7 @@ async function runLinkVerify(){
   const domain = normHost($("lvDomain").value);
   if(!page || !domain){ out.innerHTML = '<div class="err">Enter both the linking page URL and your domain.</div>'; btn.disabled=false; return; }
   /* Free-plan limit: 5 link verifications per calendar month (cloud counts only). */
-  if(S.mode==='cloud' && currentPlan!=='pro' && !isAdmin()){
+  if(planLimitApplies()){
     const used = usageThisMonth().linksUsed;
     if(used >= PLAN_LIMITS.linkChecksPerMonth){
       out.innerHTML = '<div class="warn"><b>Free plan limit reached.</b> You have used ' + used + ' of ' + PLAN_LIMITS.linkChecksPerMonth + ' link verifications this month. <button class="btn small" data-action="upgrade">Upgrade to Pro — $9/month</button> for unlimited checks.</div>';
@@ -1442,11 +1707,12 @@ function renderRevenue(){
     return '<tr><td>' + fmtDate(e.date) + '</td><td>' + esc(e.network) + '</td><td>$' + (+e.amount).toFixed(2) + '</td><td><button class="btn small danger" data-del-rev="' + i + '">Delete</button></td></tr>';
   }).join("") + '</table>' : '<p class="muted">No revenue logged yet.</p>';
   $("revList").querySelectorAll("[data-del-rev]").forEach(b => b.addEventListener("click", async () => {
+    b.disabled = true; const oldText = b.textContent; b.textContent = "Deleting…";
     const list = S.get("revenue", []);
     const item = list[+b.dataset.delRev];
     if(S.mode==='cloud' && item && item.id){
       const { error } = await sb.from("revenue_entries").delete().eq("id", item.id);
-      if(error){ alert("Could not delete that entry: " + error.message); return; }
+      if(error){ prependNote("revList", "err", "Could not delete that entry: " + error.message); b.disabled = false; b.textContent = oldText; return; }
     }
     list.splice(+b.dataset.delRev, 1);
     if(S.mode==='local') LS.set("revenue", list);
@@ -1454,21 +1720,31 @@ function renderRevenue(){
   }));
 }
 $("revAddBtn").addEventListener("click", async () => {
-  const amt = parseFloat($("revAmt").value);
-  if(isNaN(amt) || amt < 0){ alert("Enter a valid amount (0 or more)."); return; }
-  const rec = { date: $("revDate").value || todayISO(), network: $("revNet").value, amount: amt };
-  if(S.mode==='cloud'){
-    const { data, error } = await sb.from("revenue_entries").insert({ user_id:currentUser.id, entry_date:rec.date, network:rec.network, amount:rec.amount }).select("id").single();
-    if(error || !data){ alert("Could not log that revenue: " + (error ? error.message : "unknown error")); return; }
-    rec.id = data.id;
-    S.get("revenue", []).push(rec);
-  }else{
-    const entries = LS.get("revenue", []);
-    entries.push(rec);
-    LS.set("revenue", entries);
+  /* Disabled for the whole save: a double-tap used to log the same revenue
+     twice. The button text is the loading indicator. */
+  const btn = $("revAddBtn");
+  btn.disabled = true; btn.textContent = "Logging…";
+  try{
+    const amt = parseFloat($("revAmt").value);
+    if(isNaN(amt) || amt < 0){ prependNote("revList", "err", "Enter a valid amount (0 or more)."); return; }
+    const rec = { date: $("revDate").value || todayISO(), network: $("revNet").value, amount: amt };
+    if(S.mode==='cloud'){
+      const { data, error } = await sb.from("revenue_entries").insert({ user_id:currentUser.id, entry_date:rec.date, network:rec.network, amount:rec.amount }).select("id").single();
+      if(error || !data){ prependNote("revList", "err", "Could not log that revenue: " + (error ? error.message : "unknown error")); return; }
+      rec.id = data.id;
+      S.get("revenue", []).push(rec);
+    }else{
+      const entries = LS.get("revenue", []);
+      entries.push(rec);
+      LS.set("revenue", entries);
+    }
+    $("revAmt").value = "";
+    renderRevenue(); renderDashboard();
+  }catch(e){
+    prependNote("revList", "err", "Could not log that revenue — " + (e.message||e));
+  }finally{
+    btn.disabled = false; btn.textContent = "Log revenue";
   }
-  $("revAmt").value = "";
-  renderRevenue(); renderDashboard();
 });
 function loadSettings(){
   const s = LS.get("settings", {});
@@ -1549,14 +1825,27 @@ function agentCanChat(){
 function agentBumpUsage(){
   if(isAdmin() || isPaidPlan()) return;
   const u = agentUsageToday();
-  LS.set("agentUsage", {date:u.date, used:u.used+1});
+  /* Best-effort only: if storage is full the LS.set throws, and the throw
+     used to land in agentSend's catch and append "Could not answer" AFTER
+     the real reply had already rendered. Swallow it here — the reply stands. */
+  try{ LS.set("agentUsage", {date:u.date, used:u.used+1}); }catch(e){}
+}
+/* Forge counts, computed the same way the Dashboard does: rank checks live
+   inside keywords[].checks (loadCloudData folds the rank_checks table into
+   them — no top-level rankChecks key ever exists, so reading one always
+   said "0 rank checks"), and "links" is a list of check groups each with a
+   .count — count the links, not the groups. */
+function agentDataCounts(){
+  const kws = S.get("keywords", []);
+  const ranks = kws.reduce((a,k)=>a+((k.checks||[]).length),0);
+  const links = S.get("links", []).reduce((a,g)=>a+((g&&g.count)||0),0);
+  return {ranks, links};
 }
 function agentContext(){
   const audits = S.get("audits", []);
   const last = audits[0];
   const kws = S.get("keywords", []).length;
-  const ranks = S.get("rankChecks", []).length;
-  const links = S.get("links", []).length;
+  const {ranks, links} = agentDataCounts();
   const bits = [];
   if(last) bits.push("latest site audit: " + (last.url||"") + " — PageSpeed " + (last.psi==null?"unknown":last.psi+"/100") + (last.ok==null?"":", "+last.ok+" of "+last.total+" URLs reachable"));
   bits.push(kws + " keywords tracked, " + ranks + " rank checks, " + links + " verified links");
@@ -1574,8 +1863,7 @@ function agentLocalAnswer(q){
   const audits = S.get("audits", []);
   const last = audits[0];
   const kws = S.get("keywords", []);
-  const ranks = S.get("rankChecks", []).length;
-  const links = S.get("links", []).length;
+  const {ranks, links} = agentDataCounts();
   const plan = currentPlan||"free";
   if(has("help","what can you do","hello","hey") || text.trim()==="hi"){
     return "No key needed for this: I can tell you about your own saved data — try 'what is my latest audit score?', 'how many keywords am I tracking?', 'how many links have I verified?', or 'what is my plan?'. For open SEO questions — how to fix something, what to do next — add your key in Settings (CoArena, or a free Gemini key) and I can answer those too.";
@@ -1606,7 +1894,7 @@ let agentHistory = [];
 function agentRender(){
   const box = $("agentMsgs");
   const limit = agentCanChat();
-  $("agentLimit").textContent = isPaidPlan() ? "Pro — unlimited" : (limit.left + " of " + PLAN_LIMITS.aiMessagesPerDay + " free messages left today");
+  $("agentLimit").textContent = isPaidPlan() ? planDisplayName(currentPlan) + " — unlimited" : (limit.left + " of " + PLAN_LIMITS.aiMessagesPerDay + " free messages left today");
   box.innerHTML = agentHistory.length ? agentHistory.map(m => '<div class="agent-msg ' + (m.role==="user"?"user":"ai") + '">' + esc(m.content) + '</div>').join("") : '<p class="muted">Ask about your audit results, keywords, or any SEO question. I answer from your saved data — I never invent numbers. No key? I can still answer questions about your own data — try “what is my latest audit score?”</p>';
   box.scrollTop = box.scrollHeight;
 }
@@ -1677,6 +1965,11 @@ const SEED_LISTINGS = [
   { id:"seed-4", site:"https://syedsenterprises.org", niche:"Software, SEO & content services", price:null, da:"", dr:"", title:"Syed Enterprises — Services hub", desc:"All services in one place — SEO tools, AI tool listings, real estate content and custom software. Browse the full list on the hub; DM for rates." }
 ];
 function allListings(){ return SEED_LISTINGS.concat(S.get("listings", [])); }
+/* One-shot marketplace error: placeOrder runs before renderMarket() in its
+   caller, so an inline note written straight into #mktOrders would be wiped
+   by the re-render. The error is staged here and rendered (once) by
+   renderMarket(). */
+let marketError = "";
 async function placeOrder(l){
   if(S.mode==='cloud'){
     let listingId = l.id;
@@ -1685,12 +1978,12 @@ async function placeOrder(l){
          Copy the seed listing into the user's listings so the order's
          foreign key has a real row to point at. */
       const { data, error } = await sb.from("listings").insert({ user_id:currentUser.id, site_url:l.site, niche:l.niche, price:l.price, da:null, dr:null, listing_type:"seed-copy" }).select("id").single();
-      if(error || !data){ alert("Could not place that order: " + (error ? error.message : "unknown error")); return false; }
+      if(error || !data){ marketError = "Could not place that order: " + (error ? error.message : "unknown error"); return false; }
       listingId = data.id;
       S.cache.listings.push({ id:data.id, site:l.site, niche:l.niche, price:l.price, da:"", dr:"", title:l.title, desc:l.desc });
     }
     const { data: ord, error: oerr } = await sb.from("orders").insert({ user_id:currentUser.id, listing_id:listingId, status:"pending" }).select("id").single();
-    if(oerr || !ord){ alert("Could not place that order: " + (oerr ? oerr.message : "unknown error")); return false; }
+    if(oerr || !ord){ marketError = "Could not place that order: " + (oerr ? oerr.message : "unknown error"); return false; }
     const orders = S.get("orders", []);
     orders.unshift({ id:ord.id, date:todayISO(), listing:l.title, site:l.site, price:l.price, status:"pending", listing_id:listingId });
     return true;
@@ -1702,14 +1995,17 @@ async function placeOrder(l){
 }
 /* Featured listings (v2.11.0): Agency accounts (and the owner) can mark one of
    their own listings as featured — it sorts first with a "Featured" badge.
-   The flag lives in per-account localStorage (LS is keyed by user id when
-   signed in, same as preferences); there is no featured column in the
-   listings table yet — a future DB column would make it server-side. Pure
-   sort helper, so it is unit testable. */
+   Business includes everything in Agency, so it can feature too. */
 function featuredListingIds(){ return LS.get("featuredListings", []); }
 function isFeaturedListing(id){ return featuredListingIds().includes(id); }
+/* Agency or Business (or the owner) may feature. Pro and Free may not. */
+function canFeatureListings(){ return isAdmin() || currentPlan === "agency" || currentPlan === "business"; }
 function toggleFeaturedListing(id){
-  if(!isAdmin() && currentPlan !== "agency") return false;
+  if(!canFeatureListings()) return false;
+  /* Seed listings are the site's own directory entries — they can never be
+     force-featured via a stored id (the Feature button is hidden for them,
+     but a stored id must not work either). */
+  if(String(id).indexOf("seed-") === 0) return false;
   const ids = featuredListingIds();
   const i = ids.indexOf(id);
   if(i >= 0) ids.splice(i,1); else ids.push(id);
@@ -1717,14 +2013,18 @@ function toggleFeaturedListing(id){
   return true;
 }
 function featuredFirst(listings){
-  const ids = new Set(featuredListingIds());
+  /* The featured sort applies only when the current plan can feature, and
+     never to seed listings — a stored seed id (e.g. from before a plan
+     downgrade) must not resurrect a badge or a first-place sort. */
+  if(!canFeatureListings()) return (listings||[]).slice();
+  const ids = new Set(featuredListingIds().filter(id => String(id).indexOf("seed-") !== 0));
   return (listings||[]).slice().sort((a,b) => (ids.has(b.id)?1:0) - (ids.has(a.id)?1:0));
 }
 function renderMarket(){
   const listings = featuredFirst(allListings());
-  const canFeature = isAdmin() || currentPlan === "agency";
+  const canFeature = canFeatureListings();
   $("mktList").innerHTML = listings.map(l =>
-    '<div class="listing">' + (isFeaturedListing(l.id) ? '<span class="pill ok">Featured</span> ' : '') + '<b>' + esc(l.title) + '</b> — <span class="muted">' + esc(l.niche) + '</span><br>'
+    '<div class="listing">' + (canFeature && isFeaturedListing(l.id) ? '<span class="pill ok">Featured</span> ' : '') + '<b>' + esc(l.title) + '</b> — <span class="muted">' + esc(l.niche) + '</span><br>'
     + '<span class="muted">' + esc(l.desc||"") + '</span><br>'
     + '<a href="' + esc(normaliseSite(l.site)) + '" target="_blank" rel="noopener">' + esc(l.site) + '</a><br>'
     + '<span class="price">' + (l.price==null ? 'DM for rates' : '$' + l.price + ' one-time') + '</span>'
@@ -1742,18 +2042,20 @@ function renderMarket(){
     renderMarket(); renderDashboard();
   }));
   const orders = S.get("orders", []);
-  $("mktOrders").innerHTML = orders.length ? orders.map((o,i) =>
+  const errHtml = marketError ? '<div class="err">' + esc(marketError) + '</div>' : '';
+  marketError = "";
+  $("mktOrders").innerHTML = errHtml + (orders.length ? orders.map((o,i) =>
     '<div class="listing"><b>' + esc(o.listing) + '</b> <span class="muted">— ' + fmtDate(o.date) + '</span><br>'
     + '<span class="pill warn">' + esc(o.status) + '</span> ' + (o.price==null ? 'DM for rates' : '$' + o.price)
     + ' <button class="btn small secondary" data-complete-order="' + i + '">Mark completed</button>'
     + ' <button class="btn small danger" data-del-order="' + i + '">Delete</button></div>').join("")
-    : '<p class="muted">No orders yet. Orders are records only — contact the buyer yourself to complete the sale. No payments are taken here.</p>';
+    : '<p class="muted">No orders yet. Orders are records only — contact the buyer yourself to complete the sale. No payments are taken here.</p>');
   $("mktOrders").querySelectorAll("[data-complete-order]").forEach(b => b.addEventListener("click", async () => {
     const o = S.get("orders", []);
     const item = o[+b.dataset.completeOrder];
     if(S.mode==='cloud' && item && item.id){
       const { error } = await sb.from("orders").update({ status:"completed" }).eq("id", item.id);
-      if(error){ alert("Could not update that order: " + error.message); return; }
+      if(error){ prependNote("mktOrders", "err", "Could not update that order: " + error.message); return; }
     }
     item.status = "completed";
     if(S.mode==='local') LS.set("orders", o);
@@ -1764,7 +2066,7 @@ function renderMarket(){
     const item = o[+b.dataset.delOrder];
     if(S.mode==='cloud' && item && item.id){
       const { error } = await sb.from("orders").delete().eq("id", item.id);
-      if(error){ alert("Could not delete that order: " + error.message); return; }
+      if(error){ prependNote("mktOrders", "err", "Could not delete that order: " + error.message); return; }
     }
     o.splice(+b.dataset.delOrder, 1);
     if(S.mode==='local') LS.set("orders", o);
@@ -1772,25 +2074,36 @@ function renderMarket(){
   }));
 }
 $("mkAddBtn").addEventListener("click", async () => {
-  const site = normaliseSite($("mkSite").value);
-  const priceRaw = $("mkPrice").value;
-  if(!site){ alert("Enter the site URL."); return; }
-  const price = priceRaw==="" ? null : parseFloat(priceRaw);
-  if(price!==null && (isNaN(price) || price<0)){ alert("Enter a valid price, or leave it blank for DM for rates."); return; }
-  const niche = ($("mkNiche").value||"").trim()||"General";
-  const da = $("mkDa").value===""?"":$("mkDa").value;
-  const dr = $("mkDr").value===""?"":$("mkDr").value;
-  if(S.mode==='cloud'){
-    const { data, error } = await sb.from("listings").insert({ user_id:currentUser.id, site_url:site, niche, price, da:(da===""?null:parseInt(da,10)), dr:(dr===""?null:parseInt(dr,10)), listing_type:"custom" }).select("id").single();
-    if(error || !data){ alert("Could not add that listing: " + (error ? error.message : "unknown error")); return; }
-    S.get("listings", []).push({ id:data.id, site, niche, price, da, dr, title:site.replace(/^https?:\/\//,""), desc:"Custom listing added by you." });
-  }else{
-    const listings = LS.get("listings", []);
-    listings.push({ id:"custom-" + Date.now(), site, niche, price, da, dr, title:site.replace(/^https?:\/\//,""), desc:"Custom listing added by you." });
-    LS.set("listings", listings);
+  /* Disabled for the whole save: a double-tap used to add the same listing
+     twice. The button text is the loading indicator. */
+  const btn = $("mkAddBtn");
+  btn.disabled = true; btn.textContent = "Adding…";
+  formErr("mkErr", "");
+  try{
+    const site = normaliseSite($("mkSite").value);
+    const priceRaw = $("mkPrice").value;
+    if(!site){ formErr("mkErr", "Enter the site URL."); return; }
+    const price = priceRaw==="" ? null : parseFloat(priceRaw);
+    if(price!==null && (isNaN(price) || price<0)){ formErr("mkErr", "Enter a valid price, or leave it blank for DM for rates."); return; }
+    const niche = ($("mkNiche").value||"").trim()||"General";
+    const da = $("mkDa").value===""?"":$("mkDa").value;
+    const dr = $("mkDr").value===""?"":$("mkDr").value;
+    if(S.mode==='cloud'){
+      const { data, error } = await sb.from("listings").insert({ user_id:currentUser.id, site_url:site, niche, price, da:(da===""?null:parseInt(da,10)), dr:(dr===""?null:parseInt(dr,10)), listing_type:"custom" }).select("id").single();
+      if(error || !data){ formErr("mkErr", "Could not add that listing: " + (error ? error.message : "unknown error")); return; }
+      S.get("listings", []).push({ id:data.id, site, niche, price, da, dr, title:site.replace(/^https?:\/\//,""), desc:"Custom listing added by you." });
+    }else{
+      const listings = LS.get("listings", []);
+      listings.push({ id:"custom-" + Date.now(), site, niche, price, da, dr, title:site.replace(/^https?:\/\//,""), desc:"Custom listing added by you." });
+      LS.set("listings", listings);
+    }
+    ["mkSite","mkNiche","mkPrice","mkDa","mkDr"].forEach(id => { $(id).value = ""; });
+    renderMarket();
+  }catch(e){
+    formErr("mkErr", "Could not add that listing — " + (e.message||e));
+  }finally{
+    btn.disabled = false; btn.textContent = "Add listing";
   }
-  ["mkSite","mkNiche","mkPrice","mkDa","mkDr"].forEach(id => { $(id).value = ""; });
-  renderMarket();
 });
 
 /* ================= v2.6 integrations ================= */
@@ -1801,11 +2114,13 @@ $("mkAddBtn").addEventListener("click", async () => {
 let lastAudit = null; /* { site, score, lcp, cls, date } — for the share buttons */
 let googleConnected = false;
 
-function fetchJsonTimeout(url, ms, opts){
+function fetchJsonTimeout(url, ms, opts, scope){
   const c = new AbortController();
+  const set = scope || activeRequests;
+  set.add(c);
   const t = setTimeout(() => c.abort(), ms);
   const o = Object.assign({}, opts || {}, { signal: c.signal });
-  return fetch(url, o).finally(() => clearTimeout(t));
+  return fetch(url, o).finally(() => { clearTimeout(t); set.delete(c); });
 }
 async function supabaseAccessToken(){
   if(!sb) return null;
@@ -1862,7 +2177,9 @@ async function connectGoogle(){
 }
 document.addEventListener("click", e => {
   const t = e.target.closest('[data-action="google-connect"]');
-  if(t){ e.preventDefault(); connectGoogle(); }
+  if(t){ e.preventDefault(); connectGoogle(); return; }
+  if(e.target.closest('[data-action="google-disconnect-yes"]')){ e.preventDefault(); doDisconnectGoogle(); return; }
+  if(e.target.closest('[data-action="google-disconnect-no"]')){ e.preventDefault(); clearDisconnectConfirm(); }
 });
 async function handleGoogleReturn(){
   let code = null, state = null, err = null;
@@ -1875,15 +2192,19 @@ async function handleGoogleReturn(){
     return;
   }
   if(!code) return;
-  let savedState = null;
-  try{ savedState = sessionStorage.getItem("seoforge.googleState"); }catch(e){}
-  const verifier = sessionStorage.getItem("seoforge.googleVerifier");
-  sessionStorage.removeItem("seoforge.googleVerifier");
-  const owner = sessionStorage.getItem("seoforge.googleUser");
-  const issued = Number(sessionStorage.getItem("seoforge.googleTime"));
-  sessionStorage.removeItem("seoforge.googleState");
-  sessionStorage.removeItem("seoforge.googleUser");
-  sessionStorage.removeItem("seoforge.googleTime");
+  /* Every sessionStorage access is guarded (F14b): with storage disabled
+     the unguarded getItem calls below threw and the boot chain fell into a
+     generic warning instead of the specific "state did not match" message. */
+  const ssGet = k => { try{ return sessionStorage.getItem(k); }catch(e){ return null; } };
+  const ssDel = k => { try{ sessionStorage.removeItem(k); }catch(e){} };
+  const savedState = ssGet("seoforge.googleState");
+  const verifier = ssGet("seoforge.googleVerifier");
+  ssDel("seoforge.googleVerifier");
+  const owner = ssGet("seoforge.googleUser");
+  const issued = Number(ssGet("seoforge.googleTime"));
+  ssDel("seoforge.googleState");
+  ssDel("seoforge.googleUser");
+  ssDel("seoforge.googleTime");
   if(!verifier || !savedState || state !== savedState || !currentUser || owner !== currentUser.id || !issued || Date.now()-issued > 600000){
     showBanner("Google sign-in was rejected: the security check (state) did not match. Try connecting again.", 'warn');
     return;
@@ -1916,6 +2237,7 @@ function setGoogleStatusUI(connected, note){
 }
 async function renderGoogleStatus(){
   if(!currentUser){ setGoogleStatusUI(false, "Sign in to SEOForge first, then connect Google."); return; }
+  ["gscStatus","intGoogleStatus"].forEach(id => { const el = $(id); if(el) el.textContent = "Checking Google connection…"; });
   try{
     const data = await googleApi("status", {});
     setGoogleStatusUI(!!data.connected, data.connected ? "" : "Google is not connected.");
@@ -1923,8 +2245,30 @@ async function renderGoogleStatus(){
     setGoogleStatusUI(false, "Google connection is not available yet — " + (e.message || e));
   }
 }
-async function disconnectGoogle(){
-  if(!confirm("Disconnect Google? SEOForge will delete its stored Google tokens and stop reading your Search Console and Analytics data.")) return;
+async function disconnectGoogle(source){
+  /* No native modal: the first tap arms an inline confirm row ("Disconnect?
+     [Yes, disconnect] [Keep connected]"); the row's buttons finish or cancel
+     it. A second tap while armed does nothing — the row is already waiting.
+     F9: the row is rendered WHERE THE USER CLICKED. The old code always
+     wrote into #gscDisconnectConfirm (GSC tab) even when the click came from
+     the Settings button — the confirm armed in a hidden tab and the button
+     looked dead. source is "int" (Settings) or "gsc" (default). */
+  const row = source === "int" ? $("intDisconnectConfirm") : $("gscDisconnectConfirm");
+  const other = source === "int" ? elOrNull("gscDisconnectConfirm") : elOrNull("intDisconnectConfirm");
+  if(other && other.dataset.armed){ other.innerHTML = ""; delete other.dataset.armed; }
+  if(!row){ await doDisconnectGoogle(); return; }
+  if(row.dataset.armed){ return; }
+  row.dataset.armed = "1";
+  row.innerHTML = '<span class="muted">Disconnect Google? SEOForge will delete its stored Google tokens and stop reading your Search Console and Analytics data. </span><button type="button" class="btn small danger" data-action="google-disconnect-yes">Yes, disconnect</button> <button type="button" class="btn small secondary" data-action="google-disconnect-no">Keep connected</button>';
+}
+function clearDisconnectConfirm(){
+  ["gscDisconnectConfirm","intDisconnectConfirm"].forEach(id => {
+    const row = elOrNull(id);
+    if(row){ row.innerHTML = ""; delete row.dataset.armed; }
+  });
+}
+async function doDisconnectGoogle(){
+  clearDisconnectConfirm();
   try{
     await googleApi("disconnect", {});
     showBanner("Google disconnected.", 'ok');
@@ -1933,8 +2277,8 @@ async function disconnectGoogle(){
   }
   renderGoogleStatus();
 }
-$("gscDisconnectBtn").addEventListener("click", disconnectGoogle);
-$("intDisconnectBtn").addEventListener("click", disconnectGoogle);
+$("gscDisconnectBtn").addEventListener("click", () => disconnectGoogle("gsc"));
+$("intDisconnectBtn").addEventListener("click", () => disconnectGoogle("int"));
 function defaultDateRange(){
   const end = new Date(), start = new Date(Date.now() - 27*24*3600*1000);
   const iso = d => d.toISOString().slice(0,10);
@@ -1969,7 +2313,12 @@ async function runGscReport(){
     const data = await googleApi("gsc", { site, startDate: start, endDate: end });
     prog.textContent = "";
     const t = data.totals || {};
-    out.innerHTML = '<p><span class="pill ok">' + (t.clicks||0) + ' clicks</span> <span class="pill info">' + (t.impressions||0) + ' impressions</span> <span class="pill info">CTR ' + (((t.ctr||0)*100).toFixed(2)) + '%</span> <span class="pill info">Avg position ' + ((t.position==null)?"—":(+t.position).toFixed(1)) + '</span></p>'
+    /* A missing total is "not reported", not a zero: the API returns no
+       totals object at all when it has nothing to report for the range. */
+    const n = v => (v==null ? "—" : v);
+    const noTotals = t.clicks==null && t.impressions==null && t.ctr==null && t.position==null;
+    out.innerHTML = '<p><span class="pill ok">' + n(t.clicks) + ' clicks</span> <span class="pill info">' + n(t.impressions) + ' impressions</span> <span class="pill info">CTR ' + (t.ctr==null ? "—" : (((t.ctr)*100).toFixed(2)) + '%') + '</span> <span class="pill info">Avg position ' + ((t.position==null)?"—":(+t.position).toFixed(1)) + '</span></p>'
+      + (noTotals ? '<p class="muted">Search Console did not report totals for this date range — these are not zeros, they were not reported.</p>' : '')
       + '<p class="muted">Source: Google Search Console API, ' + esc(start) + ' to ' + esc(end) + '. These are your real figures for this site.</p>'
       + gscRowsTable("Top pages", data.pages || [], "Page")
       + gscRowsTable("Top queries", data.queries || [], "Query");
@@ -1995,7 +2344,10 @@ async function runGa4Report(){
   try{
     const data = await googleApi("ga4", { property: prop });
     prog.textContent = "";
-    out.innerHTML = '<div class="grid"><div class="stat"><b>' + (data.sessions||0) + '</b><span>sessions (28 days)</span></div><div class="stat"><b>' + (data.users||0) + '</b><span>users (28 days)</span></div></div>'
+    /* A missing metric is "not reported", not zero. */
+    const n = v => (v==null ? "—" : v);
+    out.innerHTML = '<div class="grid"><div class="stat"><b>' + n(data.sessions) + '</b><span>sessions (28 days)</span></div><div class="stat"><b>' + n(data.users) + '</b><span>users (28 days)</span></div></div>'
+      + ((data.sessions==null && data.users==null) ? '<p class="muted">Analytics did not report figures for this property — these are not zeros, they were not reported.</p>' : '')
       + '<p class="muted">Source: Google Analytics Data API (GA4), last 28 days, property ' + esc(prop) + '.</p>';
   }catch(e){ prog.textContent = ""; out.innerHTML = '<div class="err">GA4 report failed: ' + esc(e.message || e) + '</div>'; }
 }
@@ -2035,10 +2387,18 @@ async function saveNotifPref(){
 $("notifSaveBtn").addEventListener("click", saveNotifPref);
 
 /* ---------- share / export (client-side, no keys) ---------- */
+/* Share text for a Site Audit. Leads with the SEOForge Speed Score — our own
+   deterministic measurement — and shows Google's PageSpeed only as a
+   secondary number stamped with the run time, because Google's score varies
+   run to run and must never be presented as a stable badge. */
 function auditShareText(a){
-  return "SEOForge audit: " + a.site + " — PageSpeed " + (a.score==null?"—":a.score) + "/100"
+  const psi = (a.score==null ? "—" : a.score) + "/100" + (a.time ? " at " + a.time : "");
+  const stable = a.sfScore!=null
+    ? "Speed Score " + a.sfScore + "/100 (our own measurement)"
+    : null;
+  return "SEOForge audit: " + a.site + " — " + (stable ? stable + "; Google PageSpeed " + psi : "Google PageSpeed " + psi)
     + (a.lcp ? ", LCP " + a.lcp : "") + (a.cls ? ", CLS " + a.cls : "")
-    + ". Checked " + a.date + " with SEOForge.";
+    + ". Checked " + a.date + " with SEOForge. (Google's PageSpeed score varies run to run.)";
 }
 function shareBarHtml(a){
   const host = normHost(a.site.replace(/^https?:\/\//,"").split("/")[0]);
@@ -2046,7 +2406,7 @@ function shareBarHtml(a){
     + '<div class="row"><button class="btn secondary" data-share="web">Share…</button>'
     + '<button class="btn secondary" data-share="x">Post on X</button>'
     + '<button class="btn secondary" data-share="linkedin">Post on LinkedIn</button>'
-    + '<button class="btn secondary" data-share="copy">Copy summary</button></div>'
+    + '<button class="btn secondary" data-share="copy">Copy summary</button> <span id="shareStatus" class="muted" role="status"></span></div>'
     + (host === "lookforit.xyz" ? '<p style="margin-top:8px"><a href="https://www.lookforit.xyz" target="_blank" rel="noopener">Open in LookForIt</a> — this site is listed in the LookForIt directory.</p>' : '')
     + '<p class="muted">Sharing posts only the summary above — no account data leaves the page.</p></div>';
 }
@@ -2060,8 +2420,16 @@ async function copyText(t){
     }catch(e2){ return false; }
   }
 }
+/* Copy/share confirmation goes into the status span next to the share
+   buttons (same pattern as the landing hero's #heroShareNote). */
+function shareStatusNote(msg){
+  const st = elOrNull("shareStatus");
+  if(st) st.textContent = msg;
+}
 async function shareAudit(kind){
-  if(!lastAudit){ alert("Run an audit first, then share it."); return; }
+  /* The share bar only renders when an audit exists, so this is near
+     unreachable — a banner, never a modal, if it ever fires. */
+  if(!lastAudit){ showBanner("Run an audit first, then share it.", "warn"); return; }
   const text = auditShareText(lastAudit);
   const pageUrl = "https://seoforge.syedsenterprises.org/";
   if(kind === "web"){
@@ -2070,12 +2438,12 @@ async function shareAudit(kind){
       catch(e){ if(e && e.name === "AbortError") return; }
     }
     const ok = await copyText(text + " " + pageUrl);
-    alert(ok ? "Sharing is not supported in this browser — the summary was copied instead." : "Sharing is not supported in this browser.");
+    shareStatusNote(ok ? "Sharing is not supported in this browser — the summary was copied instead." : "Sharing is not supported in this browser.");
     return;
   }
   if(kind === "copy"){
     const ok = await copyText(text + " " + pageUrl);
-    alert(ok ? "Audit summary copied." : "Could not copy — select the text manually.");
+    shareStatusNote(ok ? "Audit summary copied." : "Could not copy — select the text manually.");
     return;
   }
   if(kind === "x"){
@@ -2119,9 +2487,14 @@ function v25Usage(){
   if(currentUser && cloudUsage) return cloudUsage;
   const m = thisMonthPrefix();
   const briefsUsed = S.get("briefs", []).filter(b => (b.date||"").indexOf(m)===0).length;
-  const compRows = S.get("competitors", []).filter(c => (c.date||"").indexOf(m)===0).length;
-  const comparesUsed = Math.floor(compRows/2); /* one compare saves two rows (one per URL) */
-  const toolChecksUsed = S.get("toolChecks", []).filter(t => (t.date||"").indexOf(m)===0).length;
+  /* Compares are counted by RUNS, not by stored competitor rows: a compare
+     saves only its fresh URLs (one new + one already-tracked URL saves a
+     single row), so deriving runs from rows undercounts. runCompare records
+     one "compare" tool check per run; "compare" rows are excluded from the
+     tool-checks limit count so the two limits stay independent. */
+  const checks = S.get("toolChecks", []).filter(t => (t.date||"").indexOf(m)===0);
+  const comparesUsed = checks.filter(t => t.type==="compare").length;
+  const toolChecksUsed = checks.filter(t => t.type!=="compare").length;
   return { briefsUsed, comparesUsed, toolChecksUsed };
 }
 function limitBlocked(outEl, used, limit, what){
@@ -2156,8 +2529,8 @@ async function recordToolCheck(type, url, summary){
 }
 
 /* ---------- shared live-page helpers ---------- */
-async function fetchPageDoc(url, timeoutMs){
-  const r = await fetchViaProxy(url, timeoutMs||20000);
+async function fetchPageDoc(url, timeoutMs, scope){
+  const r = await fetchViaProxy(url, timeoutMs||20000, scope);
   if(!r.status || r.status < 200 || r.status >= 300) throw new Error("Page fetch failed (HTTP " + (r.status||"proxy error") + "). Check the URL and retry.");
   const doc = new DOMParser().parseFromString(r.text, "text/html");
   return { doc, status:r.status, text:r.text, ttfbMs:r.ttfbMs, totalMs:r.totalMs, bytes:r.bytes, compressed:r.compressed, headers:r.headers||null };
@@ -2272,8 +2645,11 @@ async function serpTopResults(keyword, n, timeoutMs){
   let lastErr = null;
   for(const s of sources){
     try{
-      const { text } = await fetchViaProxy(s.url, timeoutMs||20000);
-      const out = s.parse(text, n);
+      const res = await fetchViaProxy(s.url, timeoutMs||20000);
+      /* A non-2xx body is a block/error page, not results — never parse it
+         as if it were a results page. */
+      if(res.status && (res.status < 200 || res.status >= 300)) throw new Error("No results could be parsed from " + s.name + " (HTTP " + res.status + ") — it may be blocking automated requests.");
+      const out = s.parse(res.text, n);
       if(out.length) return out;
       lastErr = new Error("No results could be parsed from " + s.name + " — it may be blocking automated requests.");
     }catch(e){ lastErr = e; }
@@ -2283,10 +2659,11 @@ async function serpTopResults(keyword, n, timeoutMs){
 
 /* ---------- 1. SERP Preview + Meta/OG checker ---------- */
 async function runSerp(){
+  const btn = $("serpBtn"); if(btn.disabled) return; btn.disabled = true;
   const out = $("serpOut"), prog = $("serpProg");
   out.innerHTML = ""; prog.textContent = "Fetching page…";
   const url = normaliseSite($("serpUrl").value);
-  if(!url){ out.innerHTML = '<div class="err">Enter a page URL first.</div>'; prog.textContent=""; return; }
+  if(!url){ out.innerHTML = '<div class="err">Enter a page URL first.</div>'; prog.textContent=""; btn.disabled = false; return; }
   out.innerHTML = skeletonHtml(3);
   try{
     const { doc } = await fetchPageDoc(url);
@@ -2307,17 +2684,18 @@ async function runSerp(){
     prog.textContent = "";
   }catch(e){
     out.innerHTML = '<div class="err"><b>Preview failed:</b> ' + esc(e.message||e) + '</div>'; prog.textContent = "";
-  }
+  }finally{ btn.disabled = false; }
 }
 $("serpBtn").addEventListener("click", runSerp);
 
 /* ---------- 2. Broken Link Checker ---------- */
 async function runBrokenLinks(){
+  const btn = $("blBtn"); if(btn.disabled) return; btn.disabled = true;
   const out = $("blOut"), prog = $("blProg");
   out.innerHTML = ""; prog.textContent = "";
   const page = normaliseSite($("blUrl").value);
-  if(!page){ out.innerHTML = '<div class="err">Enter a page URL first.</div>'; return; }
-  if(!checkToolLimit(out)) return;
+  if(!page){ out.innerHTML = '<div class="err">Enter a page URL first.</div>'; btn.disabled = false; return; }
+  if(!checkToolLimit(out)){ btn.disabled = false; return; }
   out.innerHTML = skeletonHtml(3);
   prog.textContent = "Fetching " + page + " …";
   try{
@@ -2360,27 +2738,31 @@ async function runBrokenLinks(){
     out.innerHTML = html;
     $("blCsvBtn").addEventListener("click", () => downloadCSV("seoforge-broken-links.csv", ["url","status","anchor"], results.map(r => [r.url, r.ok ? ("OK " + r.status) : r.proxyErr ? "Unverified" : r.rateLimited ? "Rate-limited 429" : ("Broken " + (r.status||"")), r.anchor||""])));
     prog.textContent = "";
-    await recordToolCheck("broken-links", page, okN + " OK, " + broken.length + " broken, " + rateLimited.length + " rate-limited, " + unverified.length + " unverified of " + links.length + " checked");
+    try{ await recordToolCheck("broken-links", page, okN + " OK, " + broken.length + " broken, " + rateLimited.length + " rate-limited, " + unverified.length + " unverified of " + links.length + " checked"); }
+    catch(e){ out.innerHTML += '<div class="warn">Result shown above, but it could not be saved to your history: ' + esc(e.message||e) + '</div>'; }
   }catch(e){
     out.innerHTML = '<div class="err"><b>Check failed:</b> ' + esc(e.message||e) + '</div>'; prog.textContent = "";
-  }
+  }finally{ btn.disabled = false; }
 }
 $("blBtn").addEventListener("click", runBrokenLinks);
 
 /* ---------- 3. Redirect Chain Checker ---------- */
 async function runRedirects(){
+  const btn = $("rdBtn"); if(btn.disabled) return; btn.disabled = true;
   const out = $("rdOut"), prog = $("rdProg");
   out.innerHTML = ""; prog.textContent = "";
   const start = normaliseSite($("rdUrl").value);
-  if(!start){ out.innerHTML = '<div class="err">Enter a URL first.</div>'; return; }
-  if(!checkToolLimit(out)) return;
+  if(!start){ out.innerHTML = '<div class="err">Enter a URL first.</div>'; btn.disabled = false; return; }
+  if(!checkToolLimit(out)){ btn.disabled = false; return; }
   prog.textContent = "Following redirects…";
   const hops = [];
   let current = start;
-  /* Whole hop walk caps at 45s — it must never spin for minutes while the
-     user watches "Following redirects…". (Old code: 2 proxies x 12s x 10
-     hops = up to 240s of silence.) */
-  const deadline = Date.now() + 45000;
+  /* ONE total cap for the whole tool (F15): 60 s from run start covering the
+     hop walk AND the allorigins supplement AND the optional PageSpeed final-
+     URL check. The old 45 s cap covered the walk only, so the supplement
+     (15 s) + PageSpeed (120 s) could push the tool to ~3 min. Every leg
+     clamps its own timeout to the time remaining. */
+  const deadline = Date.now() + 60000;
   try{
     for(let hop=0; hop<10 && Date.now() < deadline; hop++){
       let moved = false, finished = false;
@@ -2388,7 +2770,7 @@ async function runRedirects(){
         if(Date.now() >= deadline) break;
         try{
           const c = new AbortController();
-          const t = setTimeout(() => c.abort(), 12000);
+          const t = setTimeout(() => c.abort(), Math.max(1000, Math.min(12000, deadline - Date.now())));
           let res;
           try{ res = await fetch(p(current), { signal: c.signal, redirect: "manual" }); }
           finally{ clearTimeout(t); }
@@ -2430,9 +2812,9 @@ async function runRedirects(){
       finalStatus = last.status;
       if(last.to) finalUrl = last.to;
     }
-    if(!finalUrl){
+    if(!finalUrl && Date.now() < deadline){
       try{
-        const r = await fetchTimeout("https://api.allorigins.win/get?url=" + encodeURIComponent(start), 15000);
+        const r = await fetchTimeout("https://api.allorigins.win/get?url=" + encodeURIComponent(start), Math.max(1000, Math.min(15000, deadline - Date.now())));
         if(r.ok){
           const j = await r.json();
           if(j.status){ finalUrl = j.status.url || null; finalStatus = j.status.http_code || finalStatus; }
@@ -2444,8 +2826,16 @@ async function runRedirects(){
        tool with no result. Its status is real and measured; its final URL
        stays unknown (same server-side-follow reason) and is said so. */
     if(!hops.length && !finalUrl){
+      /* The fallback is part of the 60 s cap too: past the deadline there is
+         no time left to fetch, so the tool says so honestly instead of
+         adding up to 15 s more. */
+      if(Date.now() >= deadline){
+        out.innerHTML = '<div class="err"><b>Check failed:</b> Could not follow redirects for ' + esc(start) + ' — the 60 s overall limit for this tool was reached without a result. The site may be slow or blocking automated requests; retry later.</div>';
+        prog.textContent = "";
+        return;
+      }
       try{
-        const r = await fetchViaProxy(start, 15000);
+        const r = await fetchViaProxy(start, Math.max(1000, Math.min(15000, deadline - Date.now())));
         finalStatus = r.status;
       }catch(e){
         out.innerHTML = '<div class="err"><b>Check failed:</b> Could not follow redirects for ' + esc(start) + ' — every fetch route failed (' + esc(e.message||e) + '). The site may block automated requests; retry later.</div>';
@@ -2459,12 +2849,19 @@ async function runRedirects(){
         '<tr><td>' + (i+1) + '</td><td>' + esc(h.from) + '</td><td>' + (h.status==null ? "—" : h.status) + '</td><td>' + (h.to ? esc(h.to) : '<span class="muted">' + esc(h.note||"final response") + '</span>') + '</td></tr>').join("") + '</table></div>';
     }
     if($("rdPsi").checked){
-      try{
-        const psi = await runPSI(start, "mobile");
-        finalUrl = psi.finalUrl || finalUrl;
-        html += '<p class="note">Final URL via PageSpeed: <b>' + esc(finalUrl||"not reported") + '</b></p>';
-      }catch(e){
-        html += '<div class="warn">PageSpeed final-URL check failed (it only counts against your monthly audits if it ran): ' + esc(e.message||e) + '</div>';
+      /* The PSI leg is clamped to the time left on the cap (and skipped when
+         under 5 s remain — a PageSpeed call cannot finish in that window, so
+         starting it would only blow the cap). */
+      if(Date.now() >= deadline || deadline - Date.now() < 5000){
+        html += '<div class="warn">PageSpeed final-URL check skipped — the 60 s overall limit for this tool was reached.</div>';
+      }else{
+        try{
+          const psi = await runPSI(start, "mobile", undefined, Math.max(5000, deadline - Date.now()));
+          finalUrl = psi.finalUrl || finalUrl;
+          html += '<p class="note">Final URL via PageSpeed: <b>' + esc(finalUrl||"not reported") + '</b></p>';
+        }catch(e){
+          html += '<div class="warn">PageSpeed final-URL check failed (it only counts against your monthly audits if it ran): ' + esc(e.message||e) + '</div>';
+        }
       }
     }
     if(finalUrl) html += '<p><b>Final URL:</b> ' + esc(finalUrl) + (finalStatus ? ' <span class="pill ok">HTTP ' + finalStatus + '</span>' : '') + '</p>';
@@ -2481,17 +2878,18 @@ async function runRedirects(){
     }
   }catch(e){
     out.innerHTML = '<div class="err"><b>Check failed:</b> ' + esc(e.message||e) + '</div>'; prog.textContent = "";
-  }
+  }finally{ btn.disabled = false; }
 }
 $("rdBtn").addEventListener("click", runRedirects);
 
 /* ---------- 4. Schema / JSON-LD Detector ---------- */
 async function runSchema(){
+  const btn = $("scBtn"); if(btn.disabled) return; btn.disabled = true;
   const out = $("scOut"), prog = $("scProg");
   out.innerHTML = ""; prog.textContent = "";
   const url = normaliseSite($("scUrl").value);
-  if(!url){ out.innerHTML = '<div class="err">Enter a page URL first.</div>'; return; }
-  if(!checkToolLimit(out)) return;
+  if(!url){ out.innerHTML = '<div class="err">Enter a page URL first.</div>'; btn.disabled = false; return; }
+  if(!checkToolLimit(out)){ btn.disabled = false; return; }
   out.innerHTML = skeletonHtml(3);
   prog.textContent = "Fetching " + url + " …";
   try{
@@ -2519,10 +2917,11 @@ async function runSchema(){
       });
       out.innerHTML = html;
     }
-    await recordToolCheck("schema", url, blocks.length + " JSON-LD block(s)");
+    try{ await recordToolCheck("schema", url, blocks.length + " JSON-LD block(s)"); }
+    catch(e){ out.innerHTML += '<div class="warn">Result shown above, but it could not be saved to your history: ' + esc(e.message||e) + '</div>'; }
   }catch(e){
     out.innerHTML = '<div class="err"><b>Check failed:</b> ' + esc(e.message||e) + '</div>'; prog.textContent = "";
-  }
+  }finally{ btn.disabled = false; }
 }
 $("scBtn").addEventListener("click", runSchema);
 
@@ -2565,17 +2964,20 @@ function robotsAllows(groups, agent, path){
   return { allowed: best.type === "allow", rule: best };
 }
 async function runRobotsFetch(){
-  const out = $("rbOut");
+  const btn = $("rbFetchBtn"); if(btn.disabled) return; btn.disabled = true;
+  const out = $("rbOut"), prog = $("rbProg");
   out.innerHTML = ""; $("rbTest").hidden = true; robotsGroups = null;
   const site = normaliseSite($("rbSite").value);
-  if(!site){ out.innerHTML = '<div class="err">Enter a site URL first.</div>'; return; }
-  if(!checkToolLimit(out)) return;
+  if(!site){ out.innerHTML = '<div class="err">Enter a site URL first.</div>'; btn.disabled = false; return; }
+  if(!checkToolLimit(out)){ btn.disabled = false; return; }
+  prog.textContent = "Fetching robots.txt…";
   try{
     const { text, status } = await fetchViaProxy(site + "/robots.txt", 15000);
     if(status === 404){
       out.innerHTML = '<div class="warn"><b>No robots.txt found</b> (HTTP 404 at ' + esc(site) + '/robots.txt). That means everything is allowed to crawlers.</div>';
       robotsGroups = []; $("rbTest").hidden = false;
-      await recordToolCheck("robots", site, "no robots.txt (404)");
+      try{ await recordToolCheck("robots", site, "no robots.txt (404)"); }
+      catch(e){ out.innerHTML += '<div class="warn">Result shown above, but it could not be saved to your history: ' + esc(e.message||e) + '</div>'; }
       return;
     }
     if(!status || status < 200 || status >= 300) throw new Error("robots.txt fetch failed (HTTP " + (status||"proxy error") + "). The site may be blocking automated requests — nothing below is from the real robots.txt.");
@@ -2584,9 +2986,13 @@ async function runRobotsFetch(){
     robotsGroups.forEach(g => (g.sitemaps||[]).forEach(s => sm.push(s)));
     out.innerHTML = '<p><span class="pill ok">robots.txt found</span> ' + (sm.length ? 'Sitemaps listed: ' + esc(sm.join(", ")) : 'No sitemap listed in robots.txt.') + '</p><pre class="raw">' + esc(text.slice(0, 8000)) + '</pre>';
     $("rbTest").hidden = false;
-    await recordToolCheck("robots", site, "robots.txt fetched (" + text.length + " chars)");
+    try{ await recordToolCheck("robots", site, "robots.txt fetched (" + text.length + " chars)"); }
+    catch(e){ out.innerHTML += '<div class="warn">Result shown above, but it could not be saved to your history: ' + esc(e.message||e) + '</div>'; }
   }catch(e){
     out.innerHTML = '<div class="err"><b>Fetch failed:</b> ' + esc(e.message||e) + '</div>';
+  }finally{
+    prog.textContent = "";
+    btn.disabled = false;
   }
 }
 function robotsTest(){
@@ -2613,11 +3019,12 @@ function runRobotsGen(){
   $("rgDlBtn").addEventListener("click", () => downloadFile("robots.txt", txt, "text/plain"));
 }
 async function runSitemapGen(){
+  const btn = $("smBtn"); if(btn.disabled) return; btn.disabled = true;
   const out = $("smOut"), prog = $("smProg");
   out.innerHTML = ""; prog.textContent = "";
   const site = normaliseSite($("smSite").value);
-  if(!site){ out.innerHTML = '<div class="err">Enter a site URL first.</div>'; return; }
-  if(!checkToolLimit(out)) return;
+  if(!site){ out.innerHTML = '<div class="err">Enter a site URL first.</div>'; btn.disabled = false; return; }
+  if(!checkToolLimit(out)){ btn.disabled = false; return; }
   prog.textContent = "Fetching homepage…";
   try{
     const { doc } = await fetchPageDoc(site);
@@ -2635,9 +3042,11 @@ async function runSitemapGen(){
       }catch(e){}
     });
     const list = [...urls].slice(0, 50);
-    const today = todayISO();
+    /* No <lastmod>: the generator never reads any page's real modification
+       date, so stamping every URL as modified today would be invented data
+       handed to search engines. <lastmod> is optional in the sitemap spec. */
     const xml = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
-      + list.map(u => '  <url><loc>' + esc(u) + '</loc><lastmod>' + today + '</lastmod></url>').join("\n")
+      + list.map(u => '  <url><loc>' + esc(u) + '</loc></url>').join("\n")
       + '\n</urlset>\n';
     out.innerHTML = '<div class="okbox"><b>' + list.length + ' internal URL(s) found</b> on the homepage' + (urls.size > 50 ? ' (showing the first 50)' : '') + '. Only links from the homepage are included — deeper pages are not crawled.</div>'
       + '<pre class="raw">' + esc(xml) + '</pre>'
@@ -2645,10 +3054,11 @@ async function runSitemapGen(){
     $("smCopyBtn").addEventListener("click", () => { if(navigator.clipboard) navigator.clipboard.writeText(xml); });
     $("smDlBtn").addEventListener("click", () => downloadFile("sitemap.xml", xml, "application/xml"));
     prog.textContent = "";
-    await recordToolCheck("sitemap", site, list.length + " internal URLs");
+    try{ await recordToolCheck("sitemap", site, list.length + " internal URLs"); }
+    catch(e){ out.innerHTML += '<div class="warn">Result shown above, but it could not be saved to your history: ' + esc(e.message||e) + '</div>'; }
   }catch(e){
     out.innerHTML = '<div class="err"><b>Generation failed:</b> ' + esc(e.message||e) + '</div>'; prog.textContent = "";
-  }
+  }finally{ btn.disabled = false; }
 }
 $("rbFetchBtn").addEventListener("click", runRobotsFetch);
 $("rbTestBtn").addEventListener("click", robotsTest);
@@ -2682,7 +3092,7 @@ function briefHtml(b){
   html += b.targetWordCount ? '<p>Target length: <b>about ' + b.targetWordCount + ' words</b> (median of the top-ranking pages, rounded up — an estimate, not a rule).</p>' : '<p class="muted">Target length could not be estimated — the top pages could not be read.</p>';
   if(b.headings.length) html += '<h3>Suggested headings (from the top pages’ H2s)</h3><ul>' + b.headings.map(h => '<li>' + esc(h) + '</li>').join("") + '</ul>';
   if(b.questions.length) html += '<h3>Questions to answer (real Google suggestions)</h3><ul>' + b.questions.map(q => '<li>' + esc(q) + '</li>').join("") + '</ul>';
-  html += '<h3>Pages to beat</h3><table><tr><th>Page</th><th>H1 / title</th><th>Words (est.)</th></tr>' + b.competitors.map(p => '<tr><td>' + esc(p.url) + '</td><td>' + esc(p.words==null ? "could not read" : (p.h1||"—")) + '</td><td>' + (p.words==null ? "could not read" : p.words.toLocaleString("en-GB")) + '</td></tr>').join("") + '</table></div>';
+  html += '<h3>Pages to beat</h3><table><tr><th>Page</th><th>H1 / title</th><th>Words (est.)</th></tr>' + b.competitors.map(p => '<tr><td>' + esc(p.url) + '</td><td>' + esc(p.words==null ? "could not read" : (p.h1 || p.serpTitle || "—")) + '</td><td>' + (p.words==null ? "could not read" : p.words.toLocaleString("en-GB")) + '</td></tr>').join("") + '</table></div>';
   return html;
 }
 function briefText(b){
@@ -2691,7 +3101,7 @@ function briefText(b){
   if(b.headings.length){ lines.push("Suggested headings:"); b.headings.forEach(h => lines.push("- " + h)); lines.push(""); }
   if(b.questions.length){ lines.push("Questions to answer:"); b.questions.forEach(q => lines.push("- " + q)); lines.push(""); }
   lines.push("Pages to beat:");
-  b.competitors.forEach(p => lines.push("- " + p.url + " — " + (p.words==null ? "could not read" : (p.h1||"")) + (p.words!=null ? " (" + p.words + " words, est.)" : "")));
+  b.competitors.forEach(p => lines.push("- " + p.url + " — " + (p.words==null ? "could not read" : (p.h1 || p.serpTitle || "")) + (p.words!=null ? " (" + p.words + " words, est.)" : "")));
   return lines.join("\n");
 }
 async function recordBrief(keyword, brief){
@@ -2705,11 +3115,12 @@ async function recordBrief(keyword, brief){
 }
 
 async function runBrief(){
+  const btn = $("brBtn"); if(btn.disabled) return; btn.disabled = true;
   const out = $("brOut"), prog = $("brProg");
   out.innerHTML = ""; prog.textContent = "";
   const kw = ($("brKw").value||"").trim();
-  if(!kw){ out.innerHTML = '<div class="err">Enter a target keyword first.</div>'; return; }
-  if(!checkBriefLimit(out)) return;
+  if(!kw){ out.innerHTML = '<div class="err">Enter a target keyword first.</div>'; btn.disabled = false; return; }
+  if(!checkBriefLimit(out)){ btn.disabled = false; return; }
   out.innerHTML = skeletonHtml(3);
   prog.textContent = "Finding the top 5 pages for “" + kw + "” …";
   try{
@@ -2740,7 +3151,7 @@ async function runBrief(){
     const targetWords = median ? Math.ceil(median/100)*100 : null;
     const headings = [];
     pages.forEach(p => p.h2s.forEach(h => { const t = h.toLowerCase(); if(t && !headings.some(x => x.toLowerCase()===t)) headings.push(h); }));
-    const brief = { keyword: kw, targetWordCount: targetWords, headings: headings.slice(0,12), questions: questions.slice(0,10), competitors: pages.map(p => ({ url:p.url, h1:p.h1||p.title, words:p.words })) };
+    const brief = { keyword: kw, targetWordCount: targetWords, headings: headings.slice(0,12), questions: questions.slice(0,10), competitors: pages.map(p => ({ url:p.url, h1:p.h1||null, serpTitle:p.title||null, words:p.words, error:p.error||null })) };
     const saved = await recordBrief(kw, brief);
     out.innerHTML = briefHtml(brief) + '<div class="row"><button class="btn secondary" id="brTxtBtn">Export brief (.txt)</button></div>'
       + (saved ? '<p class="muted">Saved to your briefs.</p>' : '<p class="warn">This brief could not be saved to your account (cloud table missing or offline) — the text above is still yours to copy.</p>');
@@ -2749,7 +3160,7 @@ async function runBrief(){
     renderBriefs(); renderLimitNotes();
   }catch(e){
     out.innerHTML = '<div class="err"><b>Brief failed:</b> ' + esc(e.message||e) + '</div>'; prog.textContent = "";
-  }
+  }finally{ btn.disabled = false; }
 }
 function renderBriefs(){
   const list = S.get("briefs", []);
@@ -2771,11 +3182,12 @@ $("brBtn").addEventListener("click", runBrief);
 
 /* ---------- 9. Competitor Compare ---------- */
 async function runCompare(){
+  const btn = $("cpBtn"); if(btn.disabled) return; btn.disabled = true;
   const out = $("cpOut"), prog = $("cpProg");
   out.innerHTML = ""; prog.textContent = "";
   const aUrl = normaliseSite($("cpA").value), bUrl = normaliseSite($("cpB").value);
-  if(!aUrl || !bUrl){ out.innerHTML = '<div class="err">Enter both URLs first.</div>'; return; }
-  if(!checkCompareLimit(out)) return;
+  if(!aUrl || !bUrl){ out.innerHTML = '<div class="err">Enter both URLs first.</div>'; btn.disabled = false; return; }
+  if(!checkCompareLimit(out)){ btn.disabled = false; return; }
   out.innerHTML = skeletonHtml(3);
   prog.textContent = "Comparing… (PageSpeed runs one after the other — up to a minute each)";
   const rows = [];
@@ -2821,10 +3233,13 @@ async function runCompare(){
   prog.textContent = "";
   try {
     await recordCompetitors([aUrl, bUrl]);
+    /* Record the run itself (see v25Usage): compares are counted by runs,
+       not by the fresh rows recordCompetitors happened to insert. */
+    await recordToolCheck("compare", aUrl + " vs " + bUrl, "Compared " + aUrl + " with " + bUrl);
     renderCompetitors(); renderLimitNotes();
   } catch(e) {
     out.innerHTML += '<div class="warn" role="alert"><b>Comparison not saved.</b> ' + esc(e.message) + ' The results above are available to copy, but will not survive a reload.</div>';
-  }
+  } finally { btn.disabled = false; }
 }
 /* Competitor identity (v2.11.0): a competitor is its host+path, ignoring
    protocol, a leading www., a trailing slash and host case — "www.lookforit.xyz"
@@ -2846,7 +3261,11 @@ function dedupeCompetitors(list){
   return out;
 }
 async function recordCompetitors(urls){
-  const clean = [...new Set(urls.map(url => normaliseSite(url)).filter(Boolean))];
+  /* Dedupe by normalized identity (host+path, no www/protocol/case), not by
+     raw URL string — "www.lookforit.xyz" and "lookforit.xyz" in the SAME run
+     used to insert as two rows. */
+  const seen = new Set(), clean = [];
+  urls.map(url => normaliseSite(url)).filter(Boolean).forEach(u => { const k = normCompetitorKey(u); if(!k || seen.has(k)) return; seen.add(k); clean.push(u); });
   /* Drop any URL already tracked (by normalized key) — the old code inserted
      both URLs unconditionally, so "www.lookforit.xyz" and "lookforit.xyz"
      compared on different days became two rows. */
@@ -2916,21 +3335,22 @@ function seoforgeSpeedScore(page){
 function speedScoreHtml(sf){
   return '<div class="card" style="margin-top:10px"><h3>SEOForge Speed Score — ' + sf.score + '/100 (' + esc(sf.grade) + ')</h3>'
     + '<p class="muted">Our own measurement, not Google\u2019s Lighthouse score — measured just now (' + runStamp() + ') from the page fetched live. It measures the server response, page weight and page structure; every sub-score below shows its raw number. It does not render the page, so it cannot measure true LCP/CLS — that is what the Google PageSpeed line is for.</p>'
-    + '<table><tr><th>Metric</th><th>Score</th><th>Detail</th></tr>' + sf.rows.map(r => '<tr><td><b>' + esc(r.name) + '</b></td><td>' + r.pts + ' / ' + r.max + '</td><td>' + esc(r.detail) + '</td></tr>').join("") + '</table></div>';
+    + '<table><tr><th>Metric</th><th>Score</th><th>Detail</th></tr>' + sf.rows.map(r => '<tr><td><b>' + esc(r.name) + '</b></td><td>' + (r.na ? 'N/A' : r.pts + ' / ' + r.max) + '</td><td>' + esc(r.detail) + '</td></tr>').join("") + '</table></div>';
 }
 
 /* ---------- 12. SEO Health Checklist ---------- */
 async function runHealth(){
+  const btn = $("hcBtn"); if(btn.disabled) return; btn.disabled = true;
   const out = $("hcOut"), prog = $("hcProg");
   out.innerHTML = ""; prog.textContent = "";
   const url = normaliseSite($("hcUrl").value);
-  if(!url){ out.innerHTML = '<div class="err">Enter a page URL first.</div>'; return; }
+  if(!url){ out.innerHTML = '<div class="err">Enter a page URL first.</div>'; btn.disabled = false; return; }
   /* The PageSpeed check inside the health check counts as one site audit. */
-  if(S.mode==='cloud' && currentPlan!=='pro' && !isAdmin()){
+  if(planLimitApplies()){
     const used = usageThisMonth().auditsUsed;
     if(used >= PLAN_LIMITS.auditsPerMonth){
       out.innerHTML = '<div class="warn"><b>Free plan limit reached.</b> The health check runs PageSpeed, which counts as a site audit — you have used ' + used + ' of ' + PLAN_LIMITS.auditsPerMonth + ' this month. <button class="btn small" data-action="upgrade">Upgrade to Pro — $9/month</button> for unlimited audits.</div>';
-      return;
+      btn.disabled = false; return;
     }
   }
   prog.textContent = "Reading the page…";
@@ -2946,13 +3366,14 @@ async function runHealth(){
     const noAlt = imgs.filter(i => !(i.getAttribute("alt")||"").trim()).length;
     const viewport = !!doc.querySelector('meta[name="viewport"]');
     prog.textContent = "Running PageSpeed (mobile)…";
-    let psiScore = null, psiErr = null;
-    try{ const p = await runPSI(url, "mobile"); psiScore = p.score; }catch(e){ psiErr = e.message||e; }
+    let psiScore = null, psiErr = null, psiFinalUrl = null;
+    try{ const p = await runPSI(url, "mobile"); psiScore = p.score; psiFinalUrl = p.finalUrl||null; }catch(e){ psiErr = e.message||e; }
     const sf = seoforgeSpeedScore(page);
     /* The 8 checks are computed by the shared core rule (SEOForgeCore.healthChecks)
        — the same rule the landing hero widget uses, so the free hero audit and
-       this Health Check can never disagree. */
-    const checks = SEOForgeCore.healthChecks({url, title, desc, h1s, imgs: imgs.length, noAlt, viewport, psiScore, psiErr, sfScore: sf.score, sfGrade: sf.grade});
+       this Health Check can never disagree. The final URL (after redirects)
+       is passed so an https→http downgrade fails the HTTPS check (F14d). */
+    const checks = SEOForgeCore.healthChecks({url, title, desc, h1s, imgs: imgs.length, noAlt, viewport, psiScore, psiErr, sfScore: sf.score, sfGrade: sf.grade, finalUrl: psiFinalUrl});
     const passed = checks.filter(c => c.pass).length;
     out.innerHTML = '<p><b>' + passed + ' of ' + checks.length + ' checks passed.</b></p>'
       + measuredLine('the live page was read — the title, meta description, H1 count, image alt text and viewport above are the real values from the page. PageSpeed is Google\u2019s API: <a href="' + esc(pagespeedVerifyUrl(url)) + '" target="_blank" rel="noopener">verify the PageSpeed score yourself</a>')
@@ -2962,45 +3383,11 @@ async function runHealth(){
     }).join("") + '</table>' + speedScoreHtml(sf);
     prog.textContent = "";
     const rec = { date: todayISO(), url, total: null, ok: null, failed: null, psi: psiScore, lcp: null, cls: null };
-    if(S.mode==='cloud'){
-      const id = await cloudInsertAudit(rec);
-      if(id) rec.id = id;
-      S.cache.audits = [rec].concat(S.cache.audits).slice(0,20);
-    }else{
-      LS.set("audits", [rec].concat(LS.get("audits", [])).slice(0,20));
-    }
-    renderAuditHistory(); renderLimitNotes();
-  }catch(e){
-    out.innerHTML = '<div class="err"><b>Health check failed:</b> ' + esc(e.message||e) + '</div>'; prog.textContent = "";
-  }
-}
-$("hcBtn").addEventListener("click", runHealth);
-
-/* ---------- 14. Bulk Audit ---------- */
-async function runBulkAudit(){
-  const out = $("bkOut"), prog = $("bkProg");
-  out.innerHTML = ""; prog.textContent = "";
-  let urls = ($("bkUrls").value||"").split("\n").map(s => normaliseSite(s)).filter(Boolean).slice(0, 5);
-  if(!urls.length){ out.innerHTML = '<div class="err">Enter at least one URL (one per line, max 5).</div>'; return; }
-  if(S.mode==='cloud' && currentPlan!=='pro' && !isAdmin()){
-    const used = usageThisMonth().auditsUsed;
-    const remaining = PLAN_LIMITS.auditsPerMonth - used;
-    if(remaining <= 0){
-      out.innerHTML = '<div class="warn"><b>Free plan limit reached.</b> You have used ' + used + ' of ' + PLAN_LIMITS.auditsPerMonth + ' site audits this month. <button class="btn small" data-action="upgrade">Upgrade to Pro — $9/month</button> for unlimited audits.</div>';
-      return;
-    }
-    if(urls.length > remaining){
-      out.innerHTML = '<div class="warn">Free plan: you have ' + remaining + ' audit(s) left this month, so only the first ' + remaining + ' URL(s) will run.</div>';
-      urls = urls.slice(0, remaining);
-    }
-  }
-  const rows = [];
-  for(let i=0;i<urls.length;i++){
-    prog.textContent = "Auditing " + (i+1) + " of " + urls.length + ": " + urls[i] + " …";
+    /* F7: the save is wrapped — a failed insert used to throw into the outer
+       catch and replace the rendered 8-check table with "Health check
+       failed", although the check itself succeeded. The result stays; a
+       warning is appended instead (same pattern as the N4 tools). */
     try{
-      const psi = await runPSI(urls[i], "mobile");
-      rows.push({ url: urls[i], score: psi.score, lcp: psi.lcp, cls: psi.cls, error: null });
-      const rec = { date: todayISO(), url: urls[i], total: null, ok: null, failed: null, psi: psi.score, lcp: psi.lcp, cls: psi.cls };
       if(S.mode==='cloud'){
         const id = await cloudInsertAudit(rec);
         if(id) rec.id = id;
@@ -3008,6 +3395,58 @@ async function runBulkAudit(){
       }else{
         LS.set("audits", [rec].concat(LS.get("audits", [])).slice(0,20));
       }
+    }catch(saveErr){
+      out.innerHTML += '<div class="warn">This health check ran, but saving it failed — the result above is still valid.</div>';
+    }
+    renderAuditHistory(); renderLimitNotes();
+  }catch(e){
+    out.innerHTML = '<div class="err"><b>Health check failed:</b> ' + esc(e.message||e) + '</div>'; prog.textContent = "";
+  }finally{ btn.disabled = false; }
+}
+$("hcBtn").addEventListener("click", runHealth);
+
+/* ---------- 14. Bulk Audit ---------- */
+async function runBulkAudit(){
+  const btn = $("bkBtn"); if(btn.disabled) return; btn.disabled = true;
+  const out = $("bkOut"), prog = $("bkProg");
+  out.innerHTML = ""; prog.textContent = "";
+  let urls = ($("bkUrls").value||"").split("\n").map(s => normaliseSite(s)).filter(Boolean).slice(0, 5);
+  if(!urls.length){ out.innerHTML = '<div class="err">Enter at least one URL (one per line, max 5).</div>'; btn.disabled = false; return; }
+  if(planLimitApplies()){
+    const used = usageThisMonth().auditsUsed;
+    const remaining = PLAN_LIMITS.auditsPerMonth - used;
+    if(remaining <= 0){
+      out.innerHTML = '<div class="warn"><b>Free plan limit reached.</b> You have used ' + used + ' of ' + PLAN_LIMITS.auditsPerMonth + ' site audits this month. <button class="btn small" data-action="upgrade">Upgrade to Pro — $9/month</button> for unlimited audits.</div>';
+      btn.disabled = false; return;
+    }
+    if(urls.length > remaining){
+      out.innerHTML = '<div class="warn">Free plan: you have ' + remaining + ' audit(s) left this month, so only the first ' + remaining + ' URL(s) will run.</div>';
+      urls = urls.slice(0, remaining);
+    }
+  }
+  const rows = [];
+  let saveFailed = false;
+  for(let i=0;i<urls.length;i++){
+    prog.textContent = "Auditing " + (i+1) + " of " + urls.length + ": " + urls[i] + " …";
+    try{
+      const psi = await runPSI(urls[i], "mobile");
+      /* F7: the save is wrapped INSIDE the per-URL try's success path — a
+         failed insert used to land in the same catch as a failed PageSpeed
+         run, so the URL was listed as "Not scored" with the save error as
+         its Note and the score was dropped. The score stays; the Note says
+         the save failed. */
+      let saveNote = null;
+      try{
+        const rec = { date: todayISO(), url: urls[i], total: null, ok: null, failed: null, psi: psi.score, lcp: psi.lcp, cls: psi.cls };
+        if(S.mode==='cloud'){
+          const id = await cloudInsertAudit(rec);
+          if(id) rec.id = id;
+          S.cache.audits = [rec].concat(S.cache.audits).slice(0,20);
+        }else{
+          LS.set("audits", [rec].concat(LS.get("audits", [])).slice(0,20));
+        }
+      }catch(saveErr){ saveNote = "Scored " + psi.score + "/100 but could not be saved: " + (saveErr.message||saveErr); saveFailed = true; }
+      rows.push({ url: urls[i], score: psi.score, lcp: psi.lcp, cls: psi.cls, error: saveNote });
     }catch(e){
       rows.push({ url: urls[i], score: null, lcp: null, cls: null, error: e.message||e });
     }
@@ -3015,8 +3454,9 @@ async function runBulkAudit(){
   out.innerHTML = '<div style="overflow-x:auto"><table><tr><th>URL</th><th>PageSpeed (mobile)</th><th>LCP</th><th>CLS</th><th>Note</th></tr>' + rows.map(r =>
     '<tr><td>' + esc(r.url) + '</td><td>' + (r.score==null ? '<span class="pill warn">Not scored</span>' : '<b>' + r.score + '</b>/100 <a href="' + esc(pagespeedVerifyUrl(r.url)) + '" target="_blank" rel="noopener">verify</a>') + '</td><td>' + esc(r.lcp||"—") + '</td><td>' + esc(r.cls||"—") + '</td><td class="muted">' + (r.error ? esc(r.error) : "") + '</td></tr>').join("") + '</table></div>'
     + measuredLine('every score is Google PageSpeed Insights (Google\u2019s API) — verify any of them on Google\u2019s own tool via the link next to the score')
-    + '<p class="muted">Successful checks were saved to audit history; failed checks are listed above. PageSpeed errors are shown exactly as Google returned them — a quota error (429) means retry later or add a free API key in Workspace settings.</p>';
+    + '<p class="muted">' + (saveFailed ? 'Some scored checks could not be saved to audit history (see the Notes above) — the scores shown are still valid.' : 'Successful checks were saved to audit history;') + ' failed checks are listed above. PageSpeed errors are shown exactly as Google returned them — a quota error (429) means retry later or add a free API key in Workspace settings.</p>';
   prog.textContent = "";
+  btn.disabled = false;
   renderAuditHistory(); renderLimitNotes();
 }
 $("bkBtn").addEventListener("click", runBulkAudit);
@@ -3035,6 +3475,15 @@ function renderAuditChart(){
 
 /* ---------- 15. Dashboard: rank movement + revenue compare ---------- */
 function renderDashboardExtras(){
+  /* Same cloud-load gate as renderDashboard: no movement or revenue
+     comparison until the account data has actually loaded. */
+  if(S.mode === "cloud" && !cloudDataLoaded){
+    const rm = $("rankMovement"), rc = $("revCompare");
+    const note = cloudDataFailed ? "Account data could not load — reload to retry." : "Loading your account data…";
+    if(rm) rm.innerHTML = '<p class="muted"><b>Rank movement:</b> ' + note + '</p>';
+    if(rc) rc.innerHTML = '<p class="muted"><b>Ad revenue:</b> ' + note + '</p>';
+    return;
+  }
   const kws = S.get("keywords", []);
   let up = 0, down = 0, same = 0;
   const movers = [];
@@ -3064,23 +3513,31 @@ function renderDashboardExtras(){
     const thisM = now.toISOString().slice(0,7);
     const lastD = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth()-1, 1));
     const lastM = lastD.toISOString().slice(0,7);
-    const sum = m => S.get("revenue", []).filter(e => (e.date||"").indexOf(m)===0).reduce((a,e)=>a+(+e.amount||0),0);
+    const entries = m => S.get("revenue", []).filter(e => (e.date||"").indexOf(m)===0);
+    const sum = m => entries(m).reduce((a,e)=>a+(+e.amount||0),0);
     const t = sum(thisM), l = sum(lastM);
-    let delta = "";
-    if(l > 0){
-      const pct = Math.round((t-l)/l*100);
-      delta = ' (' + (pct>=0?'+':'') + pct + '% vs last month)';
-    }else if(t > 0){
-      delta = ' (up from $0.00 last month)';
+    /* $0.00 vs $0.00 with no entries at all is not a real comparison — it
+       only says nothing was ever logged. Say so instead of printing two
+       bare zeros that read as measured revenue. */
+    if(!entries(thisM).length && !entries(lastM).length){
+      rc.innerHTML = '<p class="muted"><b>Ad revenue:</b> nothing logged for this month or last month — add entries in the Revenue Estimator to track it.</p>';
+    }else{
+      let delta = "";
+      if(l > 0){
+        const pct = Math.round((t-l)/l*100);
+        delta = ' (' + (pct>=0?'+':'') + pct + '% vs last month)';
+      }else if(t > 0){
+        delta = ' (up from $0.00 last month)';
+      }
+      rc.innerHTML = '<p><b>Ad revenue:</b> $' + t.toFixed(2) + ' this month vs $' + l.toFixed(2) + ' last month' + delta + '.</p>';
     }
-    rc.innerHTML = '<p><b>Ad revenue:</b> $' + t.toFixed(2) + ' this month vs $' + l.toFixed(2) + ' last month' + delta + '.</p>';
   }
 }
 
 /* ---------- 13. CSV exports ---------- */
 $("auditExportBtn").addEventListener("click", () => {
   const rows = S.get("audits", []).map(a => [a.date, a.url, (a.total==null?"":a.total), (a.ok==null?"":a.ok), (a.failed==null?"":a.failed), (a.psi==null?"":a.psi), a.lcp||"", a.cls||""]);
-  if(!rows.length){ alert("No audits to export yet."); return; }
+  if(!rows.length){ $("auditHistory").innerHTML = '<p class="muted">No audits to export yet — run an audit first.</p>'; return; }
   downloadCSV("seoforge-audits.csv", ["date","url","urls_checked","ok","failed","pagespeed_score","lcp","cls"], rows);
 });
 $("rkExportBtn").addEventListener("click", () => {
@@ -3089,42 +3546,63 @@ $("rkExportBtn").addEventListener("click", () => {
     if(k.checks && k.checks.length) k.checks.forEach(c => rows.push([k.keyword, k.url||"", (k.difficulty==null?"":k.difficulty), c.date, (c.position==null?"not in top results":c.position)]));
     else rows.push([k.keyword, k.url||"", (k.difficulty==null?"":k.difficulty), "", "never checked"]);
   });
-  if(!rows.length){ alert("No keywords to export yet."); return; }
+  if(!rows.length){ $("rkList").innerHTML = '<p class="muted">No keywords to export yet — add a keyword in the Rank Tracker first.</p>'; return; }
   downloadCSV("seoforge-rank-history.csv", ["keyword","target_url","difficulty","check_date","position"], rows);
 });
 $("lvExportBtn").addEventListener("click", () => {
   const rows = S.get("links", []).map(l => [l.date, l.page, l.domain, l.count, l.types||""]);
-  if(!rows.length){ alert("No verified links to export yet."); return; }
+  if(!rows.length){ $("lvHistory").innerHTML = '<p class="muted">No verified links to export yet — verify a link first.</p>'; return; }
   downloadCSV("seoforge-verified-links.csv", ["date","linking_page","domain","links_found","types"], rows);
 });
 $("revExportBtn").addEventListener("click", () => {
   const rows = S.get("revenue", []).map(e => [e.date, e.network, e.amount]);
-  if(!rows.length){ alert("No revenue entries to export yet."); return; }
+  if(!rows.length){ $("revList").innerHTML = '<p class="muted">No revenue entries to export yet — log revenue first.</p>'; return; }
   downloadCSV("seoforge-revenue.csv", ["date","network","amount_usd"], rows);
 });
 
 
 /* ---------- Site switcher (header) + global search ---------- */
-/* Up to 3 sites, stored in localStorage. The switcher defaults every tool's
+/* Sites are stored in localStorage, capped at the plan limit (Free 1, Pro 3,
+   Agency 10, Business/Admin 50) — never at a hardcoded 3, or a re-save after
+   reload would silently delete sites 4+. The switcher defaults every tool's
    URL input to the selected site (only empty inputs, or ones still holding
    the previous default, are overwritten — a typed URL is never clobbered). */
 function normalizeSiteList(arr){
+  /* Normalise + dedupe ONLY — never slice to the plan limit here. Slicing on
+     read is what deleted sites 11–50 on a downgrade save (F2): storedSites()
+     returned 10, the form showed 10, and the save overwrote 50 with 10. */
   const out = [];
   (arr||[]).forEach(s => { const u = SEOForgeCore.normaliseSite(s); if(u && !out.includes(u)) out.push(u); });
-  return out.slice(0,3);
+  return out;
+}
+/* The ACTIVE window: the first siteLimitForPlan() stored sites. The rest are
+   kept in storage (not active) — see loadSiteSlots() / the save handler. */
+function activeSites(){ return storedSites().slice(0, siteLimitForPlan()); }
+/* Extra site slots beyond the 10 static ones (Business/Admin: up to 50).
+   Created on demand by loadSiteSlots() and kept here so the save handler
+   can read them — the static SITE_SLOT_IDS inputs live in app.html. */
+const extraSiteSlotEls = [];
+function siteSlotValues(){
+  const vals = SITE_SLOT_IDS.map(id => { const el = $(id); return el ? (el.value||"") : ""; });
+  extraSiteSlotEls.forEach(slot => vals.push(slot.input.value || ""));
+  return vals;
 }
 function storedSites(){ return normalizeSiteList(LS.get("sites", [])); }
 function selectedSite(){
-  const sites = storedSites();
+  const sites = activeSites();
   const sel = LS.get("selectedSite", "");
   if(sel && sites.includes(sel)) return sel;
+  /* One precedence rule: the My-sites selection wins; the validated default
+     website is the fallback ONLY when the My-sites list is empty — a
+     default must never silently override a selected site. */
   const p = SEOForgeCore.validatePreferences(LS.get("preferences", {}));
+  if(!storedSites().length && p.defaultSite) return p.defaultSite;
   if(p.defaultSite && sites.includes(p.defaultSite)) return p.defaultSite;
   return sites[0] || "";
 }
 function renderSiteSwitcher(){
   const el = $("siteSwitcher"); if(!el) return;
-  const sites = storedSites();
+  const sites = activeSites();
   const sel = selectedSite();
   el.innerHTML = sites.length
     ? sites.map(s => '<option value="' + esc(s) + '"' + (s===sel?" selected":"") + '>' + esc(s.replace(/^https?:\/\//,"")) + '</option>').join("")
@@ -3132,6 +3610,16 @@ function renderSiteSwitcher(){
   el.value = sel;
 }
 function applySelectedSite(){
+  const sites = storedSites();
+  if(!sites.length){
+    /* No My-sites selection: the last-run Site Audit URL survives a reload
+       and wins over the default website for auditUrl — a typed URL is never
+       clobbered (the fill loop below only overwrites an empty input or one
+       still holding the previous default). The restore deliberately does
+       NOT set dataset.defaultSite, so the loop leaves it alone. */
+    const au = $("auditUrl");
+    if(au && !au.value){ try{ const last = LS.get("lastAuditUrl"); if(last) au.value = last; }catch(e){} }
+  }
   const site = selectedSite();
   if(!site) return;
   ["auditUrl","serpUrl","hcUrl","lvPage","blUrl","rdUrl","scUrl","rbSite","smSite","cpA"].forEach(id => {
@@ -3139,15 +3627,58 @@ function applySelectedSite(){
     if(el && (!el.value || el.value===el.dataset.defaultSite)){ el.value = site; el.dataset.defaultSite = site; }
   });
 }
+/* F2: explicit removal of one kept (over-limit) site — the only way a kept
+   site leaves the stored list. Index i is relative to the kept list. */
+function removeKeptSite(i){
+  const stored = storedSites();
+  stored.splice(siteLimitForPlan() + i, 1);
+  LS.set("sites", stored);
+  loadSiteSlots(); renderSiteSwitcher(); applySelectedSite();
+}
 function loadSiteSlots(){
-  const sites = storedSites();
+  /* Read the FULL stored list — the slots show the first `limit` sites (the
+     active window); anything beyond it is kept in storage and listed below
+     with an explicit Remove button (F2). Nothing here deletes stored sites. */
+  const sites = normalizeSiteList(LS.get("sites", []));
+  const limit = siteLimitForPlan();
+  const kept = sites.slice(limit);
   SITE_SLOT_IDS.forEach((id, i) => { const el = $(id); if(el) el.value = sites[i] || ""; });
+  /* Business/Admin allow more sites than the 10 static slots: create the
+     extra inputs on demand (up to the plan limit), so the 50-site promise
+     is self-serve instead of owner-only. Shrinking the plan removes them. */
+  const extra = $("siteSlotsExtra");
+  while(extraSiteSlotEls.length < Math.max(0, limit - SITE_SLOT_IDS.length)){
+    const n = SITE_SLOT_IDS.length + extraSiteSlotEls.length + 1;
+    const wrap = document.createElement("div");
+    const label = document.createElement("label");
+    label.textContent = "Site " + n;
+    label.htmlFor = "siteSlot" + n;
+    const input = document.createElement("input");
+    input.type = "url"; input.id = "siteSlot" + n; input.placeholder = "e.g. https://example.com";
+    wrap.appendChild(label); wrap.appendChild(input);
+    if(extra) extra.appendChild(wrap);
+    extraSiteSlotEls.push({ wrap, input });
+  }
+  while(extraSiteSlotEls.length > Math.max(0, limit - SITE_SLOT_IDS.length)){
+    const slot = extraSiteSlotEls.pop();
+    try{ slot.wrap.remove(); }catch(e){}
+  }
+  extraSiteSlotEls.forEach((slot, k) => { slot.input.value = sites[SITE_SLOT_IDS.length + k] || ""; });
   const note = $("siteLimitNote");
   if(note){
-    const limit = siteLimitForPlan();
     note.textContent = isAdmin()
-      ? "Admin — up to 10 sites in this form (no plan limit)."
-      : "Your " + planDisplayName(currentPlan) + " plan allows " + limit + " site" + (limit===1?"":"s") + (currentPlan==="business" ? " (up to 50 — more than 10 are added by the owner)." : ".");
+      ? "Admin — up to 50 sites in this form (no plan limit)."
+      : "Your " + planDisplayName(currentPlan) + " plan allows " + limit + " site" + (limit===1?"":"s") + (limit > SITE_SLOT_IDS.length ? " — all " + limit + " slots are below." : ".")
+      + (kept.length ? " " + kept.length + " extra site(s) kept (not active) — listed below; remove any you no longer want." : "");
+  }
+  /* Kept sites: visible, named, removable one by one — never silently
+     dropped, and never removed except by an explicit tap here. */
+  const keptEl = $("siteKeptList");
+  if(keptEl){
+    keptEl.innerHTML = kept.length
+      ? '<p class="muted">Kept sites (not active on this plan — they stay saved until you remove them):</p>' + kept.map((x,i) => '<div class="listing"><b>' + esc(x) + '</b> <button class="btn small secondary" data-remove-kept="' + i + '">Remove</button></div>').join("")
+      : "";
+    keptEl.querySelectorAll("[data-remove-kept]").forEach(b => b.addEventListener("click", () => removeKeptSite(Number(b.dataset.removeKept))));
   }
 }
 /* Global search: one header input that jumps to a tool with the query
@@ -3184,13 +3715,19 @@ function applyPreferences(p){
   const dark = p.theme === "dark" || (p.theme === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
   document.documentElement.dataset.theme = dark ? "dark" : "light";
   document.documentElement.dataset.density = p.density;
-  document.documentElement.style.setProperty("--teal", p.accent);
+  /* One accent drives the whole design: --accent is the variable styles.css
+     themes from; --teal is set to the same value as a backwards-compatible
+     alias (see SEOForgeCore.applyAccent). */
+  SEOForgeCore.applyAccent(document.documentElement, p.accent);
   renderSiteSwitcher();
+  /* applySelectedSite() is the single writer of tool URL inputs: it fills
+     them from selectedSite(), which already falls back to the validated
+     default website when the My-sites list is empty. No second write here —
+     the old one overwrote what applySelectedSite had just filled. */
   applySelectedSite();
   $("workspaceName").textContent = p.brand;
   $("psiStrategy").value = p.strategy;
   loadSiteSlots();
-  ["auditUrl","serpUrl","hcUrl"].forEach(id => { const el=$(id); if(el && p.defaultSite && (!el.value || el.value===el.dataset.defaultSite || el.value===el.defaultValue)){el.value=p.defaultSite;el.dataset.defaultSite=p.defaultSite;} });
 }
 $("prefSave").addEventListener("click", () => {
   try {
@@ -3200,6 +3737,16 @@ $("prefSave").addEventListener("click", () => {
   } catch(e){ showBanner(e.message,"warn"); }
 });
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change",()=>applyPreferences(SEOForgeCore.validatePreferences(LS.get("preferences",{}))));
+/* Cross-tab theme sync (R2): a Settings save in another tab re-themes this
+   live tab with no reload. The landing has the same listener for its own
+   key; here the key is the per-account one (LS.key) when signed in, else
+   the guest key — a change to the other key is not this tab's prefs. */
+if(typeof window.addEventListener === "function"){
+  window.addEventListener("storage", (e) => {
+    if(!e || !e.key) return;
+    if(e.key === LS.key("preferences")){ try{ loadPreferences(); }catch(err){} }
+  });
+}
 async function collectAccountExport(){
   const uid=currentUser?.id;
   const generation=authGeneration;
@@ -3337,7 +3884,7 @@ function initAppFromUrl(){
     if(currentUser){
       pendingShareUrl = "";
       const el = $("hcUrl"); if(el) el.value = sharedUrl;
-      showApp(); showTab("health"); runHealth();
+      showApp(); showTab("health"); shareRuns.add("health|" + sharedUrl); runHealth();
     }
     return;
   }
@@ -3349,7 +3896,7 @@ function initAppFromUrl(){
     else enterGuestMode();
     showTab("health");
     const el = $("hcUrl"); if(el) el.value = sharedUrl;
-    runHealth();
+    shareRuns.add("health|" + sharedUrl); runHealth();
     return;
   }
   if(auth){ showAuthView(auth); if(tab) showTab(tab); return; }
