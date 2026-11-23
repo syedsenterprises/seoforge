@@ -8,7 +8,7 @@ begin
  'auditsUsed',count(*) filter(where kind='audits'),
  'linksUsed',count(*) filter(where kind='verified_links'),
  'briefsUsed',count(*) filter(where kind='content_briefs'),
- 'comparesUsed',ceil((count(*) filter(where kind='competitors'))/2.0),
+ 'comparesUsed',(select count(*) from public.site_checks where user_id=uid and check_type='compare' and date_trunc('month', created_at at time zone 'UTC')::date=m),
  'toolChecksUsed',count(*) filter(where kind='site_checks'),
  'keywordsUsed',(select count(*) from public.keywords where user_id=uid))
  into result from seoforge_private.usage where user_id=uid and month=m;

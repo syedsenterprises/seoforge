@@ -79,15 +79,22 @@ begin
  select plan into v_plan from public.profiles where id=new.user_id;
  if tg_table_name='keywords' then
    select count(*) into v_used from public.keywords where user_id=new.user_id;
-   if coalesce(v_plan,'free')<>'pro' and v_used>=10 then raise exception 'Free keyword limit reached'; end if;
+   if coalesce(v_plan,'free') not in ('pro','agency','business') and v_used>=10 then raise exception 'Free keyword limit reached'; end if;
    return new;
  end if;
- v_limit := case tg_table_name when 'audits' then 5 when 'verified_links' then 5 when 'content_briefs' then 3 when 'competitors' then 6 when 'site_checks' then 10 end;
+ v_limit := case tg_table_name when 'audits' then 5 when 'verified_links' then 5 when 'content_briefs' then 3 when 'site_checks' then 10 end;
  if tg_table_name='verified_links' then v_operation := new.checked_at::text; else v_operation := new.id::text; end if;
+ -- Compare runs are counted from site_checks rows directly (check_type='compare'),
+ -- never from the usage table, so they are not double-counted as tool checks.
+ if tg_table_name='site_checks' and new.check_type='compare' then
+   select count(*) into v_used from public.site_checks where user_id=new.user_id and check_type='compare' and date_trunc('month', created_at at time zone 'UTC')::date=v_month;
+   if coalesce(v_plan,'free') not in ('pro','agency','business') and v_used>=3 then raise exception 'Free monthly limit reached for compares'; end if;
+   return new;
+ end if;
  -- The link verifier inserts all anchors from one observation at the same timestamp.
  if not exists(select 1 from seoforge_private.usage where user_id=new.user_id and month=v_month and kind=tg_table_name and operation=v_operation) then
    select count(*) into v_used from seoforge_private.usage where user_id=new.user_id and month=v_month and kind=tg_table_name;
-   if coalesce(v_plan,'free')<>'pro' and v_used>=v_limit then raise exception 'Free monthly limit reached for %',tg_table_name; end if;
+   if coalesce(v_plan,'free') not in ('pro','agency','business') and v_used>=v_limit then raise exception 'Free monthly limit reached for %',tg_table_name; end if;
    insert into seoforge_private.usage values(new.user_id,v_month,tg_table_name,v_operation);
  end if;
  return new;
