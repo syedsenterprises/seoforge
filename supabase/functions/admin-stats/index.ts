@@ -9,7 +9,13 @@ import {originFor,json,authenticate,env,optEnv,serviceKey,db} from "../_shared/h
    no names, no emails, no other user's data. */
 const OWNER_EMAIL = "syedsinterprises@gmail.com";
 async function countRows(table, filter){
-  const q = "?select=id&limit=1" + (filter ? "&" + filter : "");
+  /* Count via content-range, selecting * — NOT a named id column: some
+     tables have no `id` column (billing_subscriptions is keyed by user_id),
+     and PostgREST 400s a select for a column that does not exist, which
+     this function used to surface as a 400 for the owner (live, 23–24 Nov
+     2026: the panel showed "User stats unavailable" while auth succeeded).
+     select=* works on every table; the count comes from the header. */
+  const q = "?select=*&limit=1" + (filter ? "&" + filter : "");
   const key = serviceKey();
   /* A new-style secret key (sb_secret_…) is NOT a JWT: PostgREST accepts it
      as the apikey header only — sending it as "Authorization: Bearer
