@@ -19,8 +19,7 @@ async function countRows(table, filter){
      Legacy JWT service keys still go in both headers, exactly as before.
      This mirrors db() in _shared/http.js, which already omits the Bearer
      header for sb_secret_ keys. */
-  const headers = {apikey:key, Prefer:"count=exact"};
-  if(!key.startsWith("sb_secret_")) headers.Authorization = "Bearer " + key;
+  const headers = {apikey:key, Prefer:"count=exact", ...(key.startsWith("sb_secret_") ? {} : {Authorization:"Bearer " + key})};
   const res = await fetch(env("SUPABASE_URL") + "/rest/v1/" + table + q, {headers});
   if(!res.ok) throw new Error("Could not count " + table + " (HTTP " + res.status + ")");
   const range = res.headers.get("content-range") || "";
