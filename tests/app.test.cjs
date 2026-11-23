@@ -90,12 +90,19 @@ test("Storage failures provide a recoverable error",()=>{
 test("Cloud export reads every page and excludes token/config tables",async()=>{
   const a=app();
   const calls=[];
-  a.context.mockDb={from(table){calls.push(table);return{select(){return this;},eq(){return this;},order(){return this;},range(from,to){return Promise.resolve({data:from===0?Array.from({length:500},(_,i)=>({id:String(i)})):[{id:"last"}],error:null});}};}};
+  a.context.mockDb={from(table){calls.push(table);return{select(){return this;},eq(){return this;},order(){return this;},maybeSingle(){return Promise.resolve({data:null,error:null});},range(from,to){return Promise.resolve({data:from===0?Array.from({length:500},(_,i)=>({id:String(i)})):[{id:"last"}],error:null});}};},rpc:()=>Promise.resolve({data:null,error:null})}; /* rpc must exist: renderLimitNotes calls it, and a missing rpc makes the boot re-run renderAll */
   a.run('currentUser={id:"alice"};sb=mockDb;');
+  /* Let the boot's renderAll settle first: it runs after initAuth resolves
+     (fix 1), so loadNotifPref legitimately reads the signed-in user's
+     notification preference from profiles — that read is not the export's.
+     Only the calls the export itself makes are asserted below. */
+  await a.run("Promise.resolve()");
+  const before=calls.length;
   const data=await a.run("collectAccountExport()");
+  const exportCalls=calls.slice(before);
   assert.equal(data.audits.length,501);
-  assert.ok(!calls.includes("google_tokens"));
-  assert.ok(!calls.includes("profiles"));
+  assert.ok(!exportCalls.includes("google_tokens"));
+  assert.ok(!exportCalls.includes("profiles"));
 });
 test("Cloud export aborts after a database error instead of downloading partial data",async()=>{
   const a=app();
@@ -185,7 +192,8 @@ test("Forge Assistant keyless mode: answers data questions without a key",()=>{
   assert.match(a.run('agentLocalAnswer("how many keywords am I tracking?")'),/2 keywords/);
   assert.match(a.run('agentLocalAnswer("how many keywords am I tracking?")'),/seo tools/);
   assert.match(a.run('agentLocalAnswer("how many links have I verified?")'),/2 verified links/);
-  assert.match(a.run('agentLocalAnswer("what is my plan?")'),/free plan/);
+  assert.match(a.run('agentLocalAnswer("what is my plan?")'),/You're on the Free plan/);
+  assert.match(a.run('agentLocalAnswer("what is my plan?")'),/5 free messages a day/);
   assert.match(a.run('agentLocalAnswer("what is my speed score?")'),/isn't saved/);
   assert.match(a.run('agentLocalAnswer("help")'),/No key needed/);
   assert.equal(a.run('agentLocalAnswer("how do I fix my title tag?")'),null);
@@ -347,12 +355,13 @@ test("Session: hasSavedSession honours expiry",()=>{
   a.run('localStorage.setItem("sb-mzbesucdnjecinkdawzy-auth-token", JSON.stringify({access_token:"x", expires_at: Math.floor(Date.now()/1000)-10}))');
   assert.equal(a.run("hasSavedSession()"),false);
 });
-test("Version: one source of truth, 2.10.0 everywhere",()=>{
+test("Version: one source of truth, 2.11.0 everywhere",()=>{
   const a=app();
-  assert.equal(a.run("APP_VERSION"),"2.10.0");
-  assert.equal(JSON.parse(fs.readFileSync("package.json","utf8")).version,"2.10.0");
-  assert.match(fs.readFileSync("supabase/functions/status/index.ts","utf8"),/version:"2\.10\.0"/);
+  assert.equal(a.run("APP_VERSION"),"2.11.0");
+  assert.equal(JSON.parse(fs.readFileSync("package.json","utf8")).version,"2.11.0");
+  assert.match(fs.readFileSync("supabase/functions/status/index.ts","utf8"),/version:"2\.11\.0"/);
   assert.match(html,/data-app-version/);
+  assert.match(landing,/v2\.11\.0/);
   assert.doesNotMatch(html,/v2\.9/);
   assert.doesNotMatch(landing,/v2\.9/);
 });
@@ -522,4 +531,280 @@ test("Admin: the admin section exists only for the owner, and the deep link refu
   a.run("renderAdminSection()");
   assert.equal(a.run("adminSectionEl"),null);
   assert.equal(a.run("adminPanelEl"),null);
+});
+
+/* ---------- v2.11.0: fix 1 — auth flicker ---------- */
+test("Fix 1: the app renders only after the session check resolves, with neutral '…' stats before",()=>{
+  assert.match(code,/initAuth\(\)\.then\(\(\) => \{ renderAll\(\);/);
+  for(const id of ["stAudits","stKeywords","stLinks","stRevenue","stOrders"]){
+    const m=html.match(new RegExp('id="'+id+'">([^<]*)<'));
+    assert.ok(m, id+" missing");
+    assert.equal(m[1],"…");
+  }
+});
+/* ---------- v2.11.0: fix 2 — home button ---------- */
+test("Fix 2: the home button goes to the Dashboard when signed in, the landing when signed out",()=>{
+  assert.ok(code.includes('function showLanding(){ if(currentUser){ showTab("dashboard", true); } else { location.href = "./"; } }'));
+});
+/* ---------- v2.11.0: fixes 4+5 — footer inside <main> ---------- */
+test("Fixes 4+5: the footer sits inside <main> so it is never clipped or pushed below the fold",()=>{
+  const mainOpen=html.indexOf('<main id="appMain">');
+  const footer=html.indexOf("<footer>");
+  const mainClose=html.indexOf("</main>");
+  assert.ok(mainOpen>0 && footer>mainOpen && footer<mainClose);
+});
+/* ---------- v2.11.0: fix 3 — header wraps ---------- */
+test("Fix 3: the signed-in header keeps one row and truncates the email",()=>{
+  const css=fs.readFileSync("assets/styles.css","utf8");
+  assert.match(css,/#authUserLine\{flex-wrap:nowrap\}/);
+  assert.match(css,/#authUserEmail\{[^}]*text-overflow:ellipsis/);
+});
+/* ---------- v2.11.0: fix 6 — settings false error ---------- */
+test("Fix 6: settings show 'Checking…' until the status call resolves; the error appears only on a real failure",async()=>{
+  const a=app();
+  a.context.fetch=async()=>({ok:true,json:async()=>({google:true,billing:true,email:true,emailScheduled:false})});
+  a.run('capabilitiesState="idle";'); /* the boot call left it "loading" (its fetch threw in the harness) */
+  const p=a.run("loadCapabilities()");
+  assert.equal(a.elements.get("integrationReadiness").textContent,"Checking integration readiness…");
+  await p;
+  assert.match(a.elements.get("integrationReadiness").textContent,/Google reports: configured · Paid checkout: enabled · Email: configured; schedule pending/);
+  const b=app();
+  b.context.fetch=async()=>{throw Error("offline");};
+  b.context.setTimeout=(fn)=>{ if(typeof fn==="function") fn(); return 0; }; /* the harness setTimeout never fires; run the retry immediately */
+  b.run('capabilitiesState="idle";');
+  await b.run("loadCapabilities()");
+  assert.match(b.elements.get("integrationReadiness").textContent,/Integration status unavailable/);
+});
+/* ---------- v2.11.0: fix 7 — key in plain text ---------- */
+test("Fix 7: the PageSpeed key field is a password field with a show/hide toggle",()=>{
+  assert.match(html,/type="password" id="setPsi"/);
+  assert.ok(html.includes('id="setPsiToggle"'));
+  assert.ok(html.includes('id="setAiToggle"'));
+});
+/* ---------- v2.11.0: fix 8 — admin dashboard progressive ---------- */
+test("Fix 8: the Admin dashboard renders its shell immediately and fills each section separately",()=>{
+  assert.match(code,/panel\.innerHTML = '<div class="card"><h2>Admin dashboard<\/h2>'/);
+  assert.match(code,/fillAdminHealth\(\); fillAdminPay\(\); fillAdminUsers\(\);/);
+  assert.match(code,/fetchTimeout\(SUPABASE_URL \+ "\/functions\/v1\/status", 10000\)/);
+  assert.match(code,/Platform health unavailable — the status endpoint did not answer/);
+  assert.match(code,/User stats unavailable — the admin-stats function did not answer/);
+});
+/* ---------- v2.11.0: fix 9b — links stat counts links, not checks ---------- */
+test("Fix 9b: 'links verified' counts links found, not checks",()=>{
+  const a=app();
+  a.run('LS.set("links",[{id:"1",count:42},{id:"2",count:3}]);');
+  a.run("renderDashboard()");
+  assert.equal(a.elements.get("stLinks").textContent,45);
+  assert.match(a.elements.get("stLinksStat").title,/2 link check\(s\) — 45 links found/);
+});
+/* ---------- v2.11.0: fix 10 — competitor duplicates ---------- */
+test("Fix 10: www/non-www, protocol and trailing slash collapse to one competitor",()=>{
+  const a=app();
+  assert.equal(a.run('normCompetitorKey("https://www.lookforit.xyz/")'),"lookforit.xyz");
+  assert.equal(a.run('normCompetitorKey("http://lookforit.xyz")'),"lookforit.xyz");
+  assert.equal(a.run('normCompetitorKey("LOOKFORIT.XYZ/page/")'),"lookforit.xyz/page");
+  assert.equal(a.run('dedupeCompetitors([{url:"https://www.lookforit.xyz"},{url:"http://lookforit.xyz/"},{url:"https://example.com"}]).length'),2);
+  /* The two existing rows collapse at render with no database delete. */
+  a.run('LS.set("competitors",[{date:"2026-11-20",url:"https://www.lookforit.xyz"},{date:"2026-11-21",url:"https://lookforit.xyz"}]);');
+  a.run("renderCompetitors()");
+  const out=a.elements.get("cpList").innerHTML;
+  assert.equal((out.match(/lookforit\.xyz/g)||[]).length,1);
+});
+/* ---------- v2.11.0: fix 11 — admin counts match admin-stats ---------- */
+test("Fix 11: the Admin dashboard labels match admin-stats exactly — Pro/Agency/Business separate, paying = ACTIVE only",async()=>{
+  const a=app();
+  a.elements.set("adminUsers",{innerHTML:"",addEventListener(){},querySelectorAll(){return[]}});
+  a.run('supabaseAccessToken=async()=>"tok"; fetchJsonTimeout=async()=>({ok:true,json:async()=>({totalUsers:1,proUsers:0,agencyUsers:0,businessUsers:0,payingUsers:0,signups7d:1,auditsThisMonth:5,paypalPlanId:"P-TEST",subscription:{id:"I-FAKE",status:"APPROVAL_PENDING"}})});');
+  await a.run("fillAdminUsers()");
+  const out=a.elements.get("adminUsers").innerHTML;
+  assert.match(out,/Total users: <b>1<\/b>/);
+  assert.match(out,/Pro users: <b>0<\/b>/);
+  assert.match(out,/Agency users: <b>0<\/b>/);
+  assert.match(out,/Business users: <b>0<\/b>/);
+  assert.match(out,/Paying users: <b>0<\/b>.*active subscriptions only/);
+  assert.match(out,/APPROVAL_PENDING/);
+  assert.match(out,/not active, no charge/);
+});
+/* ---------- v2.11.0: fix 12 — marketplace placeholder ---------- */
+test("Fix 12: the marketplace price placeholder never suggests a default price",()=>{
+  assert.match(html,/id="mkPrice"[^>]*placeholder="Leave blank for DM for rates"/);
+  assert.doesNotMatch(html,/placeholder="20"/);
+});
+/* ---------- v2.11.0: fix 13 + before/after proof ---------- */
+test("Fix 13: past audits show the full URL on hover and the score change since the last audit",()=>{
+  const a=app();
+  a.run('LS.set("audits",[{url:"https://example.com/very/long/page-url",date:"2026-11-23",psi:80,ok:6,total:8,failed:2},{url:"https://example.com/very/long/page-url",date:"2026-11-20",psi:74,ok:5,total:8,failed:3}]);');
+  a.run("renderAuditHistory()");
+  const out=a.elements.get("auditHistory").innerHTML;
+  assert.match(out,/title="https:\/\/example\.com\/very\/long\/page-url"/);
+  assert.match(out,/▲ \+6 since last audit/);
+  assert.match(out,/PageSpeed 80\/100/);
+  assert.equal(a.run('psiDeltaFor([{url:"https://example.com",psi:87},{url:"https://example.com",psi:80}],0)'),7);
+  assert.equal(a.run('psiDeltaFor([{url:"https://example.com",psi:80},{url:"https://example.com",psi:87}],0)'),-7);
+  assert.equal(a.run('psiDeltaFor([{url:"https://example.com",psi:87}],0)'),null);
+});
+/* ---------- v2.11.0: plan tiers ---------- */
+test("Plan tiers: Free/Pro/Agency/Business limits and site counts",()=>{
+  const a=app();
+  assert.equal(a.run('planTier("free").sites'),1);
+  assert.equal(a.run('planTier("pro").sites'),3);
+  assert.equal(a.run('planTier("agency").sites'),10);
+  assert.equal(a.run('planTier("business").sites'),50);
+  assert.equal(a.run('planTier("bogus").sites'),1); /* unknown plan falls back to Free */
+  assert.equal(a.run("isPaidPlan()"),false);
+  a.run('currentPlan="pro";');
+  assert.equal(a.run("isPaidPlan()"),true);
+  assert.equal(a.run("siteLimitForPlan()"),3);
+  a.run('currentPlan="agency";');
+  assert.equal(a.run("siteLimitForPlan()"),10);
+  a.run('currentPlan="business";');
+  assert.equal(a.run("siteLimitForPlan()"),50);
+  a.run('currentPlan="free";');
+  assert.equal(a.run("siteLimitForPlan()"),1);
+  /* Owner stays unlimited on every tier. */
+  a.run('currentUser={id:"x",email:"syedsinterprises@gmail.com"}; currentPlan="free";');
+  assert.equal(a.run("siteLimitForPlan()"),10);
+  assert.match(a.run("limitNoteText()"),/Admin — unlimited/);
+  /* Free limits include the AI and site caps. */
+  assert.equal(a.run("PLAN_LIMITS.aiMessagesPerDay"),5);
+  assert.equal(a.run("PLAN_LIMITS.sites"),1);
+  assert.equal(a.run("PLAN_LIMITS.auditsPerMonth"),5);
+});
+test("Plan tiers: the upgrade picker lists all four plans with honest prices",()=>{
+  const a=app();
+  a.run('currentPlan="free";');
+  const h=a.run("planPickerHtml()");
+  assert.match(h,/Pro/); assert.match(h,/\$9\/month/);
+  assert.match(h,/Agency/); assert.match(h,/\$29\/month/);
+  assert.match(h,/Business/); assert.match(h,/Custom/);
+  assert.match(h,/Talk to sales/);
+  assert.match(h,/mailto:contact@syedsenterprises\.org/);
+  a.run('upgradeBilling="yearly";');
+  const y=a.run("planPickerHtml()");
+  assert.match(y,/\$90\/year/); assert.match(y,/save \$18/);
+  assert.match(y,/\$290\/year/); assert.match(y,/save \$58/);
+  assert.match(y,/Custom/); /* Business never changes with the toggle */
+});
+test("Plan tiers: the plan card names the tier and its limits",()=>{
+  const a=app();
+  a.run('currentUser={id:"o",email:"someone@example.com"}; currentPlan="agency";');
+  a.run("renderPlanCard()");
+  assert.match(a.elements.get("planCard").innerHTML,/Agency is active/);
+  assert.match(a.elements.get("planCard").innerHTML,/10 sites/);
+  a.run('currentPlan="business";');
+  a.run("renderPlanCard()");
+  assert.match(a.elements.get("planCard").innerHTML,/Business is active/);
+  assert.match(a.elements.get("planCard").innerHTML,/50 sites/);
+});
+/* ---------- v2.11.0: share deep links (the Magnet) ---------- */
+test("Share links: #tab=health&url= parses and validates the URL",()=>{
+  const a=app();
+  assert.equal(a.run('parseShareHash("#tab=health&url=https%3A%2F%2Fexample.com")'),"https://example.com");
+  assert.equal(a.run('parseShareHash("#tab=health&url=example.com")'),"https://example.com");
+  assert.equal(a.run('parseShareHash("#tab=health&url=javascript%3Aalert(1)")'),"");
+  assert.equal(a.run('parseShareHash("#tab=health")'),"");
+  assert.equal(a.run('parseShareHash("")'),"");
+  assert.equal(a.run('parseTabHash("#tab=health&url=https%3A%2F%2Fexample.com")'),"health");
+});
+/* ---------- v2.11.0: featured listings ---------- */
+test("Featured listings: Agency/Admin only, featured sorts first",()=>{
+  const a=app();
+  assert.equal(a.run('toggleFeaturedListing("seed-1")'),false); /* free user */
+  a.run('currentPlan="agency";');
+  assert.equal(a.run('toggleFeaturedListing("seed-1")'),true);
+  assert.equal(a.run('featuredFirst([{id:"seed-2"},{id:"seed-1"}])[0].id'),"seed-1");
+  a.run('toggleFeaturedListing("seed-1")');
+  assert.equal(a.run('featuredFirst([{id:"seed-2"},{id:"seed-1"}])[0].id'),"seed-2");
+  /* Owner can feature without a plan. */
+  a.run('currentUser={id:"x",email:"syedsinterprises@gmail.com"}; currentPlan="free";');
+  assert.equal(a.run('toggleFeaturedListing("seed-2")'),true);
+});
+/* ---------- v2.11.0: trust helpers ---------- */
+test("Trust: score ring, verify link, measured line",()=>{
+  const a=app();
+  const ring=a.run("scoreRingSVG(87)");
+  assert.match(ring,/<svg/);
+  assert.match(ring,/87/);
+  assert.equal(a.run('pagespeedVerifyUrl("https://example.com")'),"https://pagespeed.web.dev/analysis?url=https%3A%2F%2Fexample.com");
+  assert.match(a.run('measuredLine("PageSpeed score: measured by Google PageSpeed Insights")'),/How this is measured/);
+  assert.match(a.run('measuredLine("x")'),/checked just now/);
+});
+/* ---------- v2.11.0: app presentation pass ---------- */
+test("App presentation: every tab section has a page header, the guest action is a button, 10 site slots",()=>{
+  assert.equal((html.match(/class="card page-head"/g)||[]).length,19);
+  assert.match(html,/<button type="button" class="btn secondary" id="authGuestLink">Continue without an account<\/button>/);
+  for(let i=1;i<=10;i++) assert.ok(html.includes('id="siteSlot'+i+'"'),"missing siteSlot"+i);
+});
+/* ---------- v2.11.0: landing redesign (item 14) ---------- */
+test("Landing: the three paths are real buttons with the right destinations",()=>{
+  assert.match(landing,/<a class="btn" href="\.\/app\.html#auth=signup">Create free account<\/a>/);
+  assert.match(landing,/<a class="btn secondary" href="\.\/app\.html#auth=signin">Sign in<\/a>/);
+  assert.match(landing,/<a class="btn-ghost" href="\.\/app\.html#guest">Continue without an account<\/a>/);
+  assert.equal((landing.match(/href="\.\/app\.html#auth=signup"/g)||[]).length,14); /* primary CTA repeats after every section */
+  assert.doesNotMatch(landing,/assets\/app\.js/); /* the landing never loads the app */
+  assert.match(landing,/assets\/core\.js/); /* the hero widget needs the shared scoring module */
+});
+test("Landing: the showcase is a labelled demo, never our own site's numbers",()=>{
+  assert.match(landing,/Demo — real run of example\.com/);
+  assert.match(landing,/Mobile performance score 100\/100/);
+  assert.match(landing,/Sample — format only/);
+  assert.doesNotMatch(landing,/87\/100/); /* no real stats from our own sites */
+  assert.doesNotMatch(landing,/lookforit\.xyz scored/);
+  assert.match(landing,/data-showcase="audit"/);
+  assert.match(landing,/data-showcase="keywords"/);
+  assert.match(landing,/data-showcase="links"/);
+  assert.match(landing,/id="tryKw"/);
+  assert.match(landing,/id="heroUrl"/);
+  assert.match(landing,/id="heroAuditBtn"/);
+  assert.match(landing,/id="heroAuditOut"/);
+  assert.match(landing,/id="heroShareBtn"|Share your score/); /* the share action is in the widget script */
+});
+test("Landing: pricing has all four tiers with exact limits and the monthly/yearly toggle",()=>{
+  for(const t of ["Free","Pro","Agency","Business"]) assert.ok(landing.includes("<h3>"+t+"</h3>"));
+  assert.match(landing,/data-billing="monthly"/);
+  assert.match(landing,/data-billing="yearly"/);
+  assert.match(landing,/Custom/);
+  assert.match(landing,/Talk to sales/);
+  assert.match(landing,/mailto:contact@syedsenterprises\.org\?subject=SEOForge%20Business%20plan/);
+  assert.match(landing,/\$9.*\/month/);
+  assert.match(landing,/\$90.*\/year/);
+  assert.match(landing,/\$29.*\/month/);
+  assert.match(landing,/\$290.*\/year/);
+  assert.match(landing,/save \$18/);
+  assert.match(landing,/save \$58/);
+});
+test("Landing: Learn links to the three real LookForIt articles; Hire names only what is true",()=>{
+  for(const u of ["best-free-ai-tools-for-nonprofits-2026","best-ai-tools-for-authors-2026","best-ai-tools-to-repurpose-content-2026"]) assert.ok(landing.includes("https://lookforit.xyz/articles/"+u+".html"),u);
+  assert.match(landing,/Hire Syed/);
+  assert.match(landing,/final-year Computer Science student/);
+  assert.match(landing,/SEO content writer/);
+  assert.match(landing,/founder of Syed Enterprises/);
+  assert.match(landing,/mailto:contact@syedsenterprises\.org/);
+  assert.match(landing,/https:\/\/syedsenterprises\.org/);
+  assert.match(landing,/More from Syed Enterprises/);
+  assert.match(landing,/https:\/\/www\.lookforit\.xyz/);
+  assert.match(landing,/https:\/\/www\.estatepath\.online/);
+  assert.doesNotMatch(landing,/testimonial/i);
+  assert.doesNotMatch(landing,/partner/i); /* no fake partners */
+});
+test("Landing: 'Why SEOForge' carries the positioning and the honest gap",()=>{
+  assert.match(landing,/Why SEOForge/);
+  assert.match(landing,/\$9 vs \$139/);
+  assert.match(landing,/freelancers, students, small publishers, bloggers in India/);
+  assert.match(landing,/Semrush has no link marketplace/);
+  assert.match(landing,/we do NOT have a backlink index/);
+  assert.match(landing,/never claim "Semrush power" or "Ahrefs alternative"/);
+  assert.match(landing,/Why trust this/);
+  assert.match(landing,/Measured by Google's own API/);
+  assert.match(landing,/Verify it yourself in one click/);
+  assert.match(landing,/Free audit first, no card/);
+  assert.match(landing,/We admit what we can't do/);
+});
+test("Landing: every nav and footer link resolves to a real target",()=>{
+  for(const id of ["tools","pricing","solutions","learn","faq","hire"]) assert.ok(landing.includes('id="'+id+'"'),"missing anchor #"+id);
+  const tabs=["audit","keywords","links","brief","gsc","ads","preferences"];
+  for(const t of tabs) assert.ok(html.includes('data-tab="'+t+'"'),"missing app tab "+t);
+  for(const t of tabs) assert.ok(landing.includes('./app.html#tab='+t),"footer missing "+t);
+  assert.ok(landing.includes('./privacy.html'));
+  assert.ok(landing.includes('./terms.html'));
 });
