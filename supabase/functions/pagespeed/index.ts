@@ -27,7 +27,7 @@ serve(async req=>{
   try{
     res = await fetch(api, {signal:AbortSignal.timeout(100000)});
   }catch(e){ throw new Error("PageSpeed request timed out. Google's service may be slow — retry."); }
-  let data = {};
+  let data: any = {};
   try{ data = await res.json(); }catch(e){ throw new Error("PageSpeed returned an unreadable response (HTTP " + res.status + ")."); }
   if(!res.ok){
     const msg = (data.error && data.error.message) || ("HTTP " + res.status);
