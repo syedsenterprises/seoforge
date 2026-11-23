@@ -386,15 +386,17 @@ function isProxyErrorPage(status, text){
   if(status===500 && /internal server error|error code/i.test((text||"").slice(0,400))) return true;
   return false;
 }
-/* Fetch any URL through free public proxies. Returns {status, text}.
-   Status codes from the proxy usually mirror the target; 500/522/408 are proxy failures, not proof the site is down. */
+/* Fetch any URL through our own server-side proxy first, then free public proxies.
+   Returns {status, text} plus, when our proxy served it, {ttfbMs, totalMs, bytes, headers}
+   (timings the free proxies cannot provide). Status codes from a proxy usually mirror
+   the target; 500/522/408 are proxy failures, not proof the site is down. */
 async function fetchViaProxy(url, timeoutMs){
   let lastErr = null;
   /* Own server-side proxy first (reliable); free public proxies as fallback. */
   try{
     const res = await fetchJsonTimeout(SUPABASE_URL+"/functions/v1/fetch-proxy", timeoutMs||15000, {method:"POST",headers:{"Content-Type":"application/json",apikey:SUPABASE_PUBLISHABLE_KEY,Authorization:"Bearer "+SUPABASE_PUBLISHABLE_KEY},body:JSON.stringify({url})});
     const data = await res.json().catch(()=>({}));
-    if(res.ok && typeof data.text === "string") return {status:data.status||200, ok:!!data.ok, text:data.text};
+    if(res.ok && typeof data.text === "string") return {status:data.status||200, ok:!!data.ok, text:data.text, ttfbMs:data.ttfbMs, totalMs:data.totalMs, bytes:data.bytes, headers:data.headers||null};
     lastErr = new Error(data.error||("Proxy error (HTTP "+res.status+")"));
   }catch(e){ lastErr = e; }
   for(const p of PROXIES){
@@ -499,6 +501,12 @@ async function runAudit(psiOnly){
       }else{
         LS.set("audits", [rec].concat(LS.get("audits", [])).slice(0,20));
       }
+      // SEOForge Speed Score (our own measurement) — runs even when PageSpeed quota is out.
+      prog.textContent = "Measuring SEOForge Speed Score…";
+      try{
+        const sf = seoforgeSpeedScore(await fetchPageDoc(site, 20000));
+        out.innerHTML += speedScoreHtml(sf);
+      }catch(e){ out.innerHTML += '<div class="muted">SEOForge Speed Score could not be measured — ' + esc(e.message||e) + '</div>'; }
     }
     // PageSpeed
     prog.textContent = "Running PageSpeed Insights (" + strategy + ") — this can take up to a minute …";
@@ -1374,10 +1382,10 @@ async function recordToolCheck(type, url, summary){
 
 /* ---------- shared live-page helpers ---------- */
 async function fetchPageDoc(url, timeoutMs){
-  const { text, status } = await fetchViaProxy(url, timeoutMs||20000);
-  if(!status || status < 200 || status >= 300) throw new Error("Page fetch failed (HTTP " + (status||"proxy error") + "). Check the URL and retry.");
-  const doc = new DOMParser().parseFromString(text, "text/html");
-  return { doc, status, text };
+  const r = await fetchViaProxy(url, timeoutMs||20000);
+  if(!r.status || r.status < 200 || r.status >= 300) throw new Error("Page fetch failed (HTTP " + (r.status||"proxy error") + "). Check the URL and retry.");
+  const doc = new DOMParser().parseFromString(r.text, "text/html");
+  return { doc, status:r.status, text:r.text, ttfbMs:r.ttfbMs, totalMs:r.totalMs, bytes:r.bytes, headers:r.headers||null };
 }
 function pageWordCount(doc){
   const body = doc.body; if(!body) return 0;
@@ -1926,6 +1934,86 @@ function runEstimator(){
 Object.keys(RPM_RANGES).forEach(n => { const o = document.createElement("option"); o.textContent = n; $("estNiche").appendChild(o); });
 $("estBtn").addEventListener("click", runEstimator);
 
+/* ---------- SEOForge Speed Score (our own measurement) ---------- */
+/* Our own speed score — NOT Google's Lighthouse score. It scores only what we
+   can measure ourselves from the fetched page: server response, page weight,
+   render-blocking resources, compression/caching, images, request count. Every
+   sub-score shows its raw number, so nothing is invented. True LCP/CLS need a
+   real browser render, which this does not do — that is what the Google
+   PageSpeed line is for. */
+function extractSpeedMetrics(doc, text, timings){
+  const q = s => { try{ return [...doc.querySelectorAll(s)]; }catch(e){ return []; } };
+  const headScripts = q("head script[src]").filter(x => x.getAttribute("async")==null && x.getAttribute("defer")==null);
+  const headStyles = q("head link[rel=\"stylesheet\"]").filter(x => { const m=(x.getAttribute("media")||"").toLowerCase(); return m!=="print" && x.getAttribute("disabled")==null; });
+  const imgs = q("img");
+  const raster = imgs.filter(i => /\.(jpe?g|png|gif|bmp|webp|avif)(\?|#|$)/i.test(i.getAttribute("src")||""));
+  const modern = raster.filter(i => /\.(webp|avif)(\?|#|$)/i.test(i.getAttribute("src")||""));
+  const sized = imgs.filter(i => (i.getAttribute("width")||"").trim() && (i.getAttribute("height")||"").trim());
+  const resources = q("script[src]").length + q("link[rel=\"stylesheet\"]").length + q("link[rel=\"preload\"]").length + imgs.length + q("source[src]").length;
+  return {
+    ttfbMs: (timings&&timings.ttfbMs!=null)?timings.ttfbMs:null,
+    bytes: (timings&&timings.bytes!=null)?timings.bytes:null,
+    textBytes: new TextEncoder().encode(text||"").length,
+    blocking: headScripts.length + headStyles.length,
+    encoding: (timings&&timings.headers&&timings.headers.encoding)||"",
+    cache: (timings&&timings.headers&&timings.headers.cache)||"",
+    imgs: imgs.length, sized: sized.length, raster: raster.length, modern: modern.length,
+    resources
+  };
+}
+function scoreSpeedMetrics(m){
+  const rows = [];
+  let score = 0;
+  const add = (name, pts, max, detail) => { score += pts; rows.push({name, pts, max, detail}); };
+  if(m.ttfbMs==null){ add("Server response (TTFB)", 0, 25, "Not measured — the page came through a free proxy fallback, which hides timing."); }
+  else if(m.ttfbMs<=200){ add("Server response (TTFB)", 25, 25, m.ttfbMs + " ms — fast."); }
+  else if(m.ttfbMs<=400){ add("Server response (TTFB)", 20, 25, m.ttfbMs + " ms."); }
+  else if(m.ttfbMs<=800){ add("Server response (TTFB)", 12, 25, m.ttfbMs + " ms — slow server response."); }
+  else if(m.ttfbMs<=1500){ add("Server response (TTFB)", 6, 25, m.ttfbMs + " ms — very slow server response."); }
+  else { add("Server response (TTFB)", 0, 25, m.ttfbMs + " ms — the server is the bottleneck."); }
+  const kb = Math.round(((m.bytes!=null?m.bytes:m.textBytes)||0)/1024);
+  if(kb<=100){ add("HTML page weight", 15, 15, kb + " KB."); }
+  else if(kb<=250){ add("HTML page weight", 11, 15, kb + " KB."); }
+  else if(kb<=500){ add("HTML page weight", 7, 15, kb + " KB — heavy page."); }
+  else if(kb<=1024){ add("HTML page weight", 3, 15, kb + " KB — very heavy page."); }
+  else { add("HTML page weight", 0, 15, kb + " KB — the HTML alone is over 1 MB."); }
+  const b = m.blocking;
+  if(b===0){ add("Render-blocking resources", 20, 20, "None in the page head."); }
+  else if(b<=3){ add("Render-blocking resources", 15, 20, b + " blocking script(s)/stylesheet(s) in the head."); }
+  else if(b<=6){ add("Render-blocking resources", 10, 20, b + " blocking — defer or async scripts, inline critical CSS."); }
+  else if(b<=10){ add("Render-blocking resources", 5, 20, b + " blocking — the browser waits on these before showing anything."); }
+  else { add("Render-blocking resources", 0, 20, b + " blocking — the browser waits on these before showing anything."); }
+  const enc = (m.encoding||"").toLowerCase();
+  if(/gzip|br|deflate|zstd/.test(enc)){ add("Compression", 8, 8, "Served compressed (" + enc.split(",")[0].trim() + ")."); }
+  else { add("Compression", 0, 8, "No compression header seen — enable gzip or Brotli to shrink the page."); }
+  const cache = m.cache||"";
+  const mm = /max-age\s*=\s*(\d+)/i.exec(cache);
+  if(/immutable/i.test(cache) || (mm && +mm[1] >= 86400)){ add("Caching", 7, 7, "Long cache lifetime set."); }
+  else if(mm){ add("Caching", 3, 7, "Cache lifetime is only " + mm[1] + "s — raise it for repeat visits."); }
+  else { add("Caching", 0, 7, "No cache lifetime set — repeat visitors re-download everything."); }
+  if(!m.imgs){ add("Images", 15, 15, "No images on the page."); }
+  else{
+    const dimPts = Math.round(7 * m.sized / m.imgs);
+    const fmtPts = m.raster ? Math.round(8 * m.modern / m.raster) : 8;
+    add("Images", dimPts + fmtPts, 15, m.imgs + " image(s): " + m.sized + " have width+height set, " + m.modern + " of " + m.raster + " photos use a modern format (WebP/AVIF).");
+  }
+  const r = m.resources;
+  if(r<=20){ add("Requests on the page", 10, 10, r + " files referenced."); }
+  else if(r<=40){ add("Requests on the page", 7, 10, r + " files referenced."); }
+  else if(r<=60){ add("Requests on the page", 4, 10, r + " files referenced — each one is a round trip."); }
+  else { add("Requests on the page", 0, 10, r + " files referenced — combine or lazy-load where possible."); }
+  const grade = score>=90 ? "Excellent" : score>=70 ? "Good" : score>=50 ? "Needs work" : "Poor";
+  return {score, grade, rows};
+}
+function seoforgeSpeedScore(page){
+  return scoreSpeedMetrics(extractSpeedMetrics(page.doc, page.text||"", page));
+}
+function speedScoreHtml(sf){
+  return '<div class="card" style="margin-top:10px"><h3>SEOForge Speed Score — ' + sf.score + '/100 (' + esc(sf.grade) + ')</h3>'
+    + '<p class="muted">Our own measurement, not Google\u2019s Lighthouse score. It measures the server response, page weight and page structure from the fetched page — it does not render the page, so it cannot measure LCP/CLS; that is what the Google PageSpeed line is for.</p>'
+    + '<table><tr><th>Metric</th><th>Score</th><th>Detail</th></tr>' + sf.rows.map(r => '<tr><td><b>' + esc(r.name) + '</b></td><td>' + r.pts + ' / ' + r.max + '</td><td>' + esc(r.detail) + '</td></tr>').join("") + '</table></div>';
+}
+
 /* ---------- 12. SEO Health Checklist ---------- */
 async function runHealth(){
   const out = $("hcOut"), prog = $("hcProg");
@@ -1942,7 +2030,8 @@ async function runHealth(){
   }
   prog.textContent = "Reading the page…";
   try{
-    const { doc } = await fetchPageDoc(url, 20000);
+    const page = await fetchPageDoc(url, 20000);
+    const doc = page.doc;
     const title = ((doc.querySelector("title")||{}).textContent||"").trim();
     const descEl = doc.querySelector('meta[name="description"]');
     const desc = descEl ? (descEl.getAttribute("content")||"") : "";
@@ -1961,11 +2050,13 @@ async function runHealth(){
     let psiScore = null, psiErr = null;
     try{ const p = await runPSI(url, "mobile"); psiScore = p.score; }catch(e){ psiErr = e.message||e; }
     checks.push({ name:"Mobile PageSpeed ≥ 50", pass: psiScore!=null && psiScore >= 50, warn: psiScore==null, detail: psiScore==null ? "Could not check — " + (psiErr||"PageSpeed error") : "Mobile performance score " + psiScore + "/100." });
+    const sf = seoforgeSpeedScore(page);
+    checks.push({ name:"SEOForge Speed Score", pass: sf.score >= 70, warn: sf.score >= 50 && sf.score < 70, detail: sf.score + "/100 — " + sf.grade + " (our own measurement — breakdown below)." });
     const passed = checks.filter(c => c.pass).length;
     out.innerHTML = '<p><b>' + passed + ' of ' + checks.length + ' checks passed.</b></p><table><tr><th>Check</th><th>Result</th><th>Detail</th></tr>' + checks.map(c => {
       const pill = c.pass ? '<span class="pill ok">Pass</span>' : c.warn ? '<span class="pill warn">Check</span>' : '<span class="pill bad">Fail</span>';
       return '<tr><td><b>' + esc(c.name) + '</b></td><td>' + pill + '</td><td>' + esc(c.detail) + '</td></tr>';
-    }).join("") + '</table>';
+    }).join("") + '</table>' + speedScoreHtml(sf);
     prog.textContent = "";
     const rec = { date: todayISO(), url, total: null, ok: null, failed: null, psi: psiScore, lcp: null, cls: null };
     if(S.mode==='cloud'){
