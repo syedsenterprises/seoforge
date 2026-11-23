@@ -1,6 +1,10 @@
 
 const defaults={APP_ORIGINS:"https://seoforge.syedsenterprises.org,https://syedsenterprises.github.io",GOOGLE_CLIENT_ID:"158848063786-cmdknljpjj6po7j2uc4r26dp31qm4nek.apps.googleusercontent.com",GOOGLE_REDIRECT_URI:"https://seoforge.syedsenterprises.org/",BILLING_ENABLED:"false"};
 export function env(name){ const value=Deno.env.get(name)||defaults[name]; if(!value) throw new Error("Missing server configuration: "+name); return value; }
+/* Optional secret: returns "" instead of throwing when unset. Use for plan
+   IDs and APP_URL, which have legitimate unset states (a plan not yet created,
+   a legacy-only config). Never use for required credentials. */
+export function optEnv(name){ try{ return env(name); }catch(e){ return ""; } }
 export function json(data,status=200,origin=""){
   return new Response(JSON.stringify(data),{status,headers:{"Content-Type":"application/json","Cache-Control":"no-store","Access-Control-Allow-Origin":origin,"Vary":"Origin","Access-Control-Allow-Headers":"authorization, apikey, content-type, x-client-info, x-cron-secret","Access-Control-Allow-Methods":"POST, OPTIONS"}});
 }
@@ -17,8 +21,17 @@ export async function request(url,options={}){
   return data;
 }
 export function serviceKey(){
+  /* Platform-provided default secret first: Supabase injects the new secret
+     key as SUPABASE_SECRET_KEYS {"default": "sb_secret_…"} (and, on some
+     projects, SUPABASE_SECRET_KEY). The legacy SUPABASE_SERVICE_ROLE_KEY
+     JWT is the last resort — the dashboard rejects SUPABASE_ custom secret
+     names, so no custom secret can ever supply it; this function must work
+     with what the platform provides, and fail with a clear error otherwise. */
   try { const keys=JSON.parse(Deno.env.get("SUPABASE_SECRET_KEYS")||"{}"); if(keys.default) return keys.default; } catch {}
-  return env("SUPABASE_SERVICE_ROLE_KEY");
+  const single = Deno.env.get("SUPABASE_SECRET_KEY");
+  if(single) return single;
+  try { return env("SUPABASE_SERVICE_ROLE_KEY"); }
+  catch(e){ throw new Error("Missing server configuration: no platform-provided Supabase secret key is available (SUPABASE_SECRET_KEYS / SUPABASE_SECRET_KEY / SUPABASE_SERVICE_ROLE_KEY)"); }
 }
 export async function db(path,method="GET",body){
   const key=serviceKey();

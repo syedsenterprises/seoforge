@@ -1,5 +1,5 @@
 
-import {env,request} from "./http.js";
+import {env,request,optEnv} from "./http.js";
 export function paypalBase(){
   const mode=env("PAYPAL_MODE");
   if(!["sandbox","live"].includes(mode)) throw new Error("PAYPAL_MODE must be sandbox or live");
@@ -15,10 +15,12 @@ export async function paypal(path,method="GET",payload,requestId){
 export function planToTier(){
   const m = {};
   const put = (id, tier) => { if(id) m[id] = tier; };
-  put(env("PAYPAL_PLAN_PRO_MONTHLY") || env("PAYPAL_PLAN_ID"), "pro");
-  put(env("PAYPAL_PLAN_PRO_YEARLY"), "pro");
-  put(env("PAYPAL_PLAN_AGENCY_MONTHLY"), "agency");
-  put(env("PAYPAL_PLAN_AGENCY_YEARLY"), "agency");
+  /* Optional reads: a plan that is not yet created (or a legacy-only config
+     with just PAYPAL_PLAN_ID) must not throw and break billing/webhook. */
+  put(optEnv("PAYPAL_PLAN_PRO_MONTHLY") || optEnv("PAYPAL_PLAN_ID"), "pro");
+  put(optEnv("PAYPAL_PLAN_PRO_YEARLY"), "pro");
+  put(optEnv("PAYPAL_PLAN_AGENCY_MONTHLY"), "agency");
+  put(optEnv("PAYPAL_PLAN_AGENCY_YEARLY"), "agency");
   return m;
 }
 export function verifiedSubscription(subscription, plan, userId){
