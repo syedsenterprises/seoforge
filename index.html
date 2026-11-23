@@ -17,9 +17,13 @@
 <meta name="twitter:description" content="Free SEO audit, keyword explorer, rank tracking, link checks, content briefs, Search Console &amp; Analytics, ad revenue hub and link marketplace. Free plan, Pro $9/month.">
 <meta name="twitter:image" content="https://seoforge.syedsenterprises.org/logo.png">
 <script>
-/* Apply the saved theme before first paint (same key the app uses for guests).
-   No network, no CDN — the landing loads no app code. */
-try{var _p=JSON.parse(localStorage.getItem("syedSuite.preferences")||"null");var _t=_p?_p.theme:"system";if(_t==="dark"||(_t==="system"&&matchMedia("(prefers-color-scheme: dark)").matches))document.documentElement.setAttribute("data-theme","dark");}catch(e){}
+/* Apply the saved theme + accent before first paint (same key the app uses
+   for guests: localStorage "syedSuite.preferences", set by Settings in the
+   app). No network, no CDN — the landing loads no app code. The accent is
+   validated to a 6-digit hex colour before it is written, so a stored or
+   imported value can never inject CSS; anything else falls back to the
+   default teal #0f766e. --teal is set to the same value as an alias. */
+try{var _uid=null;try{var _s=JSON.parse(localStorage.getItem("sb-mzbesucdnjecinkdawzy-auth-token")||"null");_uid=_s&&_s.user&&_s.user.id;}catch(e){}var _p=null;try{_p=JSON.parse(localStorage.getItem(_uid?("syedSuite.user."+_uid+".preferences"):"syedSuite.preferences")||"null");}catch(e){}if(!_p){try{_p=JSON.parse(localStorage.getItem("syedSuite.preferences")||"null");}catch(e){}}var _t=_p?_p.theme:"system";var _dark=_t==="dark"||(_t==="system"&&matchMedia("(prefers-color-scheme: dark)").matches);if(_dark)document.documentElement.setAttribute("data-theme","dark");var _a=_p&&/^#[0-9a-f]{6}$/i.test(_p.accent||"")?_p.accent.toLowerCase():"#0f766e";var _r=parseInt(_a.slice(1,3),16),_g=parseInt(_a.slice(3,5),16),_b=parseInt(_a.slice(5,7),16);var _lf=function(v){v/=255;return v<=0.03928?v/12.92:Math.pow((v+0.055)/1.055,2.4);};var _L=0.2126*_lf(_r)+0.7152*_lf(_g)+0.0722*_lf(_b);var _on=(1.05/(_L+0.05))>=((_L+0.05)/0.062)?"#ffffff":"#111827";var _bg=_dark?[30,41,59]:[255,255,255];var _cL=function(rgb){return 0.2126*_lf(rgb[0])+0.7152*_lf(rgb[1])+0.0722*_lf(rgb[2]);};var _cr=function(fg,bg){var x=_cL(fg),y=_cL(bg);return (Math.max(x,y)+0.05)/(Math.min(x,y)+0.05);};var _d=_a;if(_cr([_r,_g,_b],_bg)<4.5){for(var _i=1;_i<=20;_i++){var _k=_i/20;var _m=_dark?[_r+(255-_r)*_k,_g+(255-_g)*_k,_b+(255-_b)*_k]:[_r*(1-_k),_g*(1-_k),_b*(1-_k)];var _h="#"+_m.map(function(v){return Math.max(0,Math.min(255,Math.round(v))).toString(16).padStart(2,"0");}).join("");if(_cr(_m,_bg)>=4.5){_d=_h;break;}if(_i===20)_d=_dark?"#ffffff":"#111827";}}document.documentElement.style.setProperty("--accent",_a);document.documentElement.style.setProperty("--teal",_a);document.documentElement.style.setProperty("--accent-on",_on);document.documentElement.style.setProperty("--accent-dark",_d);document.documentElement.style.setProperty("--accent-ink",_d);}catch(e){}
 </script>
 <link rel="stylesheet" href="./assets/styles.css">
 <script src="./assets/core.js"></script>
@@ -27,19 +31,22 @@ try{var _p=JSON.parse(localStorage.getItem("syedSuite.preferences")||"null");var
 <body>
 <header class="landing-header">
   <div class="wrap">
-    <a class="brand" href="./"><img src="./logo.png" alt="SEOForge logo" width="32" height="32">SEO<span>Forge</span> <span style="font-size:12px;color:#94a3b8;font-weight:400">v2.11.0</span></a>
-    <nav class="landing-nav" aria-label="Sections">
-      <a href="#tools">Tools</a>
-      <a href="#pricing">Pricing</a>
-      <a href="#solutions">Solutions</a>
-      <a href="#learn">Learn</a>
-      <a href="#faq">FAQ</a>
-      <a href="#hire">Hire me</a>
-    </nav>
-    <div class="landing-auth">
-      <a class="btn secondary" href="./app.html#auth=signin">Sign in</a>
-      <a class="btn" href="./app.html#auth=signup">Create free account</a>
+    <a class="brand" href="./"><img src="./logo.png" alt="SEOForge logo" width="32" height="32">SEO<span>Forge</span> <span style="font-size:12px;color:var(--muted);font-weight:400">v2.11.0</span></a>
+    <div class="landing-nav-panel" id="landingNavPanel">
+      <nav class="landing-nav" aria-label="Sections">
+        <a href="#tools">Tools</a>
+        <a href="#pricing">Pricing</a>
+        <a href="#solutions">Solutions</a>
+        <a href="#learn">Learn</a>
+        <a href="#faq">FAQ</a>
+        <a href="#hire">Hire me</a>
+      </nav>
+      <div class="landing-auth">
+        <a class="btn secondary" href="./app.html#auth=signin">Sign in</a>
+        <a class="btn" href="./app.html#auth=signup">Create free account</a>
+      </div>
     </div>
+    <button id="landingNavToggle" class="landing-nav-toggle" type="button" aria-expanded="false" aria-controls="landingNavPanel" aria-label="Menu"><span></span><span></span><span></span></button>
   </div>
 </header>
 <main class="landing-main">
@@ -48,8 +55,7 @@ try{var _p=JSON.parse(localStorage.getItem("syedSuite.preferences")||"null");var
     <p>Free SEO tools on real public data — no invented numbers. Site audits, keyword ideas, rank tracking, paid-link checks, ad revenue logging and a link marketplace.</p>
     <div class="cta">
       <a class="btn" href="./app.html#auth=signup">Create free account</a>
-      <a class="btn secondary" href="./app.html#auth=signin">Sign in</a>
-      <a class="btn-ghost" href="./app.html#guest">Continue without an account</a>
+      <a class="text-link" href="./app.html#guest">Continue without an account</a>
     </div>
     <p class="muted" style="margin-top:12px">Free plan, no card. Your data stays yours.</p>
     <div class="card hero-audit" id="heroAudit">
@@ -80,7 +86,7 @@ try{var _p=JSON.parse(localStorage.getItem("syedSuite.preferences")||"null");var
           <p><b>PageSpeed (mobile)</b><br><span class="muted">LCP 0.8s · CLS 0</span></p>
         </div>
         <div>
-          <p><b>example.com — 6 of 7 checks passed.</b> Even a perfect PageSpeed score does not mean the page is finished:</p>
+          <p><b>example.com — 4 of 7 checks passed.</b> Even a perfect PageSpeed score does not mean the page is finished:</p>
           <table><tr><th>Check</th><th>Result</th><th>Detail</th></tr>
           <tr><td><b>HTTPS</b></td><td><span class="pill ok">Pass</span></td><td>Served over HTTPS.</td></tr>
           <tr><td><b>Title tag</b></td><td><span class="pill warn">Check</span></td><td>"Example Domain" — 14 characters (ideal 30–60).</td></tr>
@@ -89,6 +95,7 @@ try{var _p=JSON.parse(localStorage.getItem("syedSuite.preferences")||"null");var
           <tr><td><b>Image alt text</b></td><td><span class="pill ok">Pass</span></td><td>No images on the page.</td></tr>
           <tr><td><b>Viewport meta tag</b></td><td><span class="pill ok">Pass</span></td><td>Viewport tag present — the page can scale on phones.</td></tr>
           <tr><td><b>Mobile PageSpeed ≥ 50</b></td><td><span class="pill ok">Pass</span></td><td>Mobile performance score 100/100.</td></tr>
+          <tr><td><b>SEOForge Speed Score</b></td><td><span class="pill info">Not measured</span></td><td>Not measured in this demo — the Speed Score needs the page's live server timings. Run the free audit above for the full 8 checks.</td></tr>
           </table>
           <p class="muted">Measured 23 Nov 2026 with the same Health Check the app runs. The Speed Score row appears on a live run — it needs the page's real server timings, which a static demo cannot show.</p>
         </div>
@@ -117,10 +124,6 @@ try{var _p=JSON.parse(localStorage.getItem("syedSuite.preferences")||"null");var
       </table></div>
       <p class="muted">Sample rows. A paid link showing as Dofollow needs fixing; a sponsored link should be rel="sponsored" (or nofollow). Run the real check in the app — the link in the result is clickable to the live page.</p>
     </div>
-  </div>
-  <div class="cta">
-    <a class="btn" href="./app.html#auth=signup">Create free account</a>
-    <a class="btn secondary" href="./app.html#auth=signin">Sign in</a>
   </div>
 
   <div id="tools">
@@ -158,10 +161,6 @@ try{var _p=JSON.parse(localStorage.getItem("syedSuite.preferences")||"null");var
       <div class="feature"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 6v12M15 9.5c0-1.5-1.3-2.5-3-2.5s-3 .8-3 2 1 2 3 2.5 3 1 3 2.5-1.3 2-3 2-3-1-3-2.5"/></svg><b>Money</b><span>Log Adsterra, Monetag and AdSense revenue by hand, estimate what your traffic could earn, and list sites in the link marketplace.</span></div>
     </div>
   </div>
-  <div class="cta">
-    <a class="btn" href="./app.html#auth=signup">Create free account</a>
-    <a class="btn secondary" href="./app.html#auth=signin">Sign in</a>
-  </div>
 
   <div class="card">
     <h2>What it actually does</h2>
@@ -178,10 +177,6 @@ try{var _p=JSON.parse(localStorage.getItem("syedSuite.preferences")||"null");var
     <div class="stat"><b>Free</b><span>5 audits/mo · 10 keywords · 5 link checks · 3 briefs · 3 compares · 10 tool checks · 5 AI messages/day · 1 site — no card</span></div>
     <div class="stat"><b>$9/mo</b><span>Pro — everything unlimited, 3 sites, paid through PayPal, cancel anytime</span></div>
   </div>
-  <div class="cta">
-    <a class="btn" href="./app.html#auth=signup">Create free account</a>
-    <a class="btn secondary" href="./app.html#auth=signin">Sign in</a>
-  </div>
 
   <div class="card" id="solutions">
     <h2>Why SEOForge — and why it costs $9, not $139</h2>
@@ -195,10 +190,6 @@ try{var _p=JSON.parse(localStorage.getItem("syedSuite.preferences")||"null");var
     </div>
     <div class="honest-gap"><b>What we don't have (yet) — and we won't hide it:</b> we do NOT have a backlink index or a keyword-volume database. That is what the $139 buys at Semrush, and our $9 reflects it. We never claim "Semrush power" or "Ahrefs alternative" as if the data were equal. The honest pitch is: everything a small site needs to audit, track, and earn — for $9.</div>
   </div>
-  <div class="cta">
-    <a class="btn" href="./app.html#auth=signup">Create free account</a>
-    <a class="btn secondary" href="./app.html#auth=signin">Sign in</a>
-  </div>
 
   <div class="card" id="trust">
     <h2>Why trust this — don't take our word for it</h2>
@@ -210,10 +201,6 @@ try{var _p=JSON.parse(localStorage.getItem("syedSuite.preferences")||"null");var
       <div class="why-card"><h3>Free audit first, no card</h3><p>Run the audit above on your own site before paying anything. If the numbers don't match what you know about your site, don't pay — the check is free either way.</p></div>
       <div class="why-card"><h3>We admit what we can't do</h3><p>No backlink index, no search volumes, no true LCP/CLS without a real browser render — the limits are stated in the UI, not hidden. Admitting what we can't do is what makes the rest believable.</p></div>
     </div>
-  </div>
-  <div class="cta">
-    <a class="btn" href="./app.html#auth=signup">Create free account</a>
-    <a class="btn secondary" href="./app.html#auth=signin">Sign in</a>
   </div>
 
   <div class="card" id="pricing">
@@ -284,10 +271,6 @@ try{var _p=JSON.parse(localStorage.getItem("syedSuite.preferences")||"null");var
     </div>
     <p class="muted">Honest limits: PageSpeed Insights runs through SEOForge's server key — if Google's quota is exhausted, the app says so instead of showing a fake score. There is no free Ahrefs/Semrush backlink index, so SEOForge does not pretend to have one.</p>
   </div>
-  <div class="cta">
-    <a class="btn" href="./app.html#auth=signup">Create free account</a>
-    <a class="btn secondary" href="./app.html#auth=signin">Sign in</a>
-  </div>
 
   <div class="card" id="learn">
     <h2>Learn SEO — real articles, free to read</h2>
@@ -309,20 +292,12 @@ try{var _p=JSON.parse(localStorage.getItem("syedSuite.preferences")||"null");var
       </div>
     </div>
   </div>
-  <div class="cta">
-    <a class="btn" href="./app.html#auth=signup">Create free account</a>
-    <a class="btn secondary" href="./app.html#auth=signin">Sign in</a>
-  </div>
 
   <div class="hire-card" id="hire">
     <h3>Hire Syed — custom SEO work for companies</h3>
     <p>Site audits, content writing, link building, and custom software through Syed Enterprises. Syed Shahed is a final-year Computer Science student, SEO content writer, and founder of Syed Enterprises.</p>
     <a class="btn" href="mailto:contact@syedsenterprises.org?subject=Custom%20SEO%20work">Email contact@syedsenterprises.org</a>
-    <a class="btn secondary" href="https://syedsenterprises.org" style="background:transparent;color:#cbd5e1;border-color:#475569">syedsenterprises.org</a>
-  </div>
-  <div class="cta">
-    <a class="btn" href="./app.html#auth=signup">Create free account</a>
-    <a class="btn secondary" href="./app.html#auth=signin">Sign in</a>
+    <a class="btn secondary" href="https://syedsenterprises.org" style="background:transparent;color:var(--ink);border-color:var(--accent-line)">syedsenterprises.org</a>
   </div>
 
   <div class="card">
@@ -344,8 +319,6 @@ try{var _p=JSON.parse(localStorage.getItem("syedSuite.preferences")||"null");var
     <h2>Start free — no card, no install</h2>
     <div class="cta">
       <a class="btn" href="./app.html#auth=signup">Create free account</a>
-      <a class="btn secondary" href="./app.html#auth=signin">Sign in</a>
-      <a class="btn-ghost" href="./app.html#guest">Continue without an account</a>
     </div>
   </div>
 </main>
@@ -407,7 +380,9 @@ try{var _p=JSON.parse(localStorage.getItem("syedSuite.preferences")||"null");var
     if(raw){
       var s = JSON.parse(raw);
       if(s && s.access_token && (!s.expires_at || s.expires_at*1000 > Date.now())){
-        location.replace("./app.html");
+        /* Keep the hash: a signed-in user opening /#pricing (or a deep link)
+           lands on the app with the anchor intact instead of losing it. */
+        location.replace("./app.html" + (location.hash || ""));
       }
     }
   }catch(e){}
@@ -417,6 +392,51 @@ try{var _p=JSON.parse(localStorage.getItem("syedSuite.preferences")||"null");var
 /* Landing interactions: showcase tabs, the try-it keyword box, and the
    monthly/yearly pricing toggle. Small, self-contained, no app code. */
 (function(){
+  /* Accent (theme adaptivity): the landing reads the SAME stored
+     preferences the app writes (localStorage key "syedSuite.preferences",
+     guest key — signed-in users are forwarded to the app). The pre-paint
+     script in <head> already applied it before first paint; re-apply here
+     so the value is honoured even if storage changed, and listen for
+     "storage" events so a pick changed in Settings in another tab re-themes
+     this page live, with no reload. Validated to a 6-digit hex first. */
+  function applyLandingAccent(){
+    /* Signed-in prefs live under syedSuite.user.<id>.preferences (the user
+       id comes from the saved Supabase session token); guests use the plain
+       key. The pre-paint script in <head> reads the same two keys, so a
+       signed-in user with a custom accent never flashes the guest teal. */
+    try{
+      var uid = null;
+      try{ var s = JSON.parse(localStorage.getItem("sb-mzbesucdnjecinkdawzy-auth-token")||"null"); uid = s && s.user && s.user.id; }catch(e){}
+      var p = null;
+      try{ p = JSON.parse(localStorage.getItem(uid ? ("syedSuite.user."+uid+".preferences") : "syedSuite.preferences")||"null"); }catch(e){}
+      if(!p){ try{ p = JSON.parse(localStorage.getItem("syedSuite.preferences")||"null"); }catch(e){} }
+      if(window.SEOForgeCore) SEOForgeCore.applyAccent(document.documentElement, p ? p.accent : null);
+    }catch(e){}
+  }
+  applyLandingAccent();
+  window.addEventListener("storage", function(e){ if(!e || e.key==="syedSuite.preferences" || /\.preferences$/.test(e.key||"")) applyLandingAccent(); });
+  /* Mobile header: the hamburger toggles the nav panel (nav links +
+     the two auth buttons). Tapping a link or Escape closes it. */
+  var navToggle = document.getElementById("landingNavToggle");
+  var landingHeader = document.querySelector(".landing-header");
+  if(navToggle && landingHeader){
+    navToggle.addEventListener("click", function(){
+      var open = landingHeader.classList.toggle("nav-open");
+      navToggle.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+    landingHeader.addEventListener("click", function(e){
+      if(e.target.closest("a") && landingHeader.classList.contains("nav-open")){
+        landingHeader.classList.remove("nav-open");
+        navToggle.setAttribute("aria-expanded", "false");
+      }
+    });
+    document.addEventListener("keydown", function(e){
+      if(e.key === "Escape" && landingHeader.classList.contains("nav-open")){
+        landingHeader.classList.remove("nav-open");
+        navToggle.setAttribute("aria-expanded", "false");
+      }
+    });
+  }
   /* Showcase tabs: Audit / Keywords / Links swap the panel. */
   var tabs = document.querySelectorAll("[data-showcase]");
   tabs.forEach(function(b){
@@ -476,8 +496,17 @@ try{var _p=JSON.parse(localStorage.getItem("syedSuite.preferences")||"null");var
   function scoreRing(score){
     var s = Math.max(0, Math.min(100, Math.round(score)));
     var r = 34, c = 2*Math.PI*r;
-    var color = s>=90 ? "#15803d" : s>=70 ? "#0f766e" : s>=50 ? "#b45309" : "#b91c1c";
-    return '<svg width="120" height="120" viewBox="0 0 96 96" role="img" aria-label="Speed score ' + s + ' out of 100"><circle cx="48" cy="48" r="'+r+'" fill="none" stroke="#e5e7eb" stroke-width="9"/><circle cx="48" cy="48" r="'+r+'" fill="none" stroke="'+color+'" stroke-width="9" stroke-linecap="round" stroke-dasharray="'+(c*s/100).toFixed(1)+" "+c.toFixed(1)+'" transform="rotate(-90 48 48)"/><text x="48" y="52" text-anchor="middle" font-size="22" font-weight="800" fill="currentColor">'+s+'</text><text x="48" y="68" text-anchor="middle" font-size="11" fill="currentColor">/ 100</text></svg>';
+    /* Bands keep their meaning (Excellent green, Needs work amber, Poor
+       red) — except the Good band, which IS the accent: it was the hardcoded
+       teal #0f766e, so it now follows the user's pick through --accent. */
+    var isAccentBand = s>=70 && s<90;
+    var color = s>=90 ? "#15803d" : s>=50 ? "#b45309" : "#b91c1c";
+    /* F1: a light accent's ring (stroke var(--accent)) is invisible on the
+       white card — when the accent takes dark ink, the ring takes the
+       darkened readable form instead. */
+    var ringVar = "var(--accent)";
+    try{ if(getComputedStyle(document.documentElement).getPropertyValue("--accent-on").trim() === "#111827") ringVar = "var(--accent-dark)"; }catch(e){}
+    return '<svg width="120" height="120" viewBox="0 0 96 96" role="img" aria-label="Speed score ' + s + ' out of 100"><circle cx="48" cy="48" r="'+r+'" fill="none" stroke="#e5e7eb" stroke-width="9"/><circle class="score-ring" cx="48" cy="48" r="'+r+'" fill="none" '+(isAccentBand ? 'style="stroke:'+ringVar+'"' : 'stroke="'+color+'"')+' stroke-width="9" stroke-linecap="round" stroke-dasharray="'+(c*s/100).toFixed(1)+" "+c.toFixed(1)+'" transform="rotate(-90 48 48)"/><text x="48" y="52" text-anchor="middle" font-size="22" font-weight="800" fill="currentColor">'+s+'</text><text x="48" y="68" text-anchor="middle" font-size="11" fill="currentColor">/ 100</text></svg>';
   }
   async function edge(fn, body, ms){
     var c = new AbortController();
@@ -494,8 +523,14 @@ try{var _p=JSON.parse(localStorage.getItem("syedSuite.preferences")||"null");var
       return {doc:new DOMParser().parseFromString(r.data.text, "text/html"), text:r.data.text, ttfbMs:r.data.ttfbMs, totalMs:r.data.totalMs, bytes:r.data.bytes, compressed:r.data.compressed, headers:r.data.headers||null};
     }
     /* The site blocked our server — one public-proxy fallback for the HTML.
-       Timings are null, so the TTFB sub-score honestly says "not measured". */
-    var res = await fetch("https://api.allorigins.win/raw?url=" + encodeURIComponent(url));
+       Timings are null, so the TTFB sub-score honestly says "not measured".
+       The fallback has a 15s timeout: a hung proxy used to leave the hero
+       button disabled on "Reading the page…" indefinitely. */
+    var ac = new AbortController(); var to = setTimeout(function(){ ac.abort(); }, 15000);
+    var res;
+    try{ res = await fetch("https://api.allorigins.win/raw?url=" + encodeURIComponent(url), {signal: ac.signal}); }
+    catch(e){ if(e && e.name === "AbortError") throw new Error("The fallback fetch timed out after 15 seconds — the proxy may be down. Try the full Health Check in the app."); throw e; }
+    finally{ clearTimeout(to); }
     if(!res.ok) throw new Error("Could not fetch the page (HTTP " + res.status + "). The site may block automated checks — try the full Health Check in the app.");
     var text = await res.text();
     return {doc:new DOMParser().parseFromString(text, "text/html"), text:text, ttfbMs:null, totalMs:null, bytes:null, compressed:null, headers:null};
@@ -518,17 +553,23 @@ try{var _p=JSON.parse(localStorage.getItem("syedSuite.preferences")||"null");var
       var viewport = !!doc.querySelector('meta[name="viewport"]');
       var sf = SEOForgeCore.scoreSpeedMetrics(SEOForgeCore.extractSpeedMetrics(doc, page.text||"", page));
       prog.textContent = "Running PageSpeed (mobile)…";
-      var psiScore = null, psiErr = null;
+      var psiScore = null, psiErr = null, psiFinalUrl = null;
       try{
         var pr = await psiP;
-        if(pr.ok && pr.data && typeof pr.data.score === "number"){ psiScore = pr.data.score; }
+        if(pr.ok && pr.data && typeof pr.data.score === "number"){ psiScore = pr.data.score; psiFinalUrl = pr.data.finalUrl || null; }
         else psiErr = (pr.data && pr.data.error) || ("PageSpeed error (HTTP " + pr.status + ")");
       }catch(e){ psiErr = e.message||e; }
-      var checks = SEOForgeCore.healthChecks({url:url, title:title, desc:desc, h1s:h1s, imgs:imgs.length, noAlt:noAlt, viewport:viewport, psiScore:psiScore, psiErr:psiErr, sfScore:sf.score, sfGrade:sf.grade});
+      /* F14d: the final URL (after redirects) is passed so an https→http
+         downgrade fails the HTTPS check instead of passing on the input URL. */
+      var checks = SEOForgeCore.healthChecks({url:url, title:title, desc:desc, h1s:h1s, imgs:imgs.length, noAlt:noAlt, viewport:viewport, psiScore:psiScore, psiErr:psiErr, sfScore:sf.score, sfGrade:sf.grade, finalUrl:psiFinalUrl});
       var passed = checks.filter(function(c){ return c.pass; }).length;
       renderResult(url, checks, passed, sf, psiScore);
       prog.textContent = "";
     }catch(e){
+      /* If the page fetch failed, the PageSpeed request may still reject
+         later — swallow it here so it never surfaces as an unhandled
+         rejection (console noise) after the honest error above. */
+      if(psiP && psiP.catch) psiP.catch(function(){});
       out.innerHTML = '<div class="err"><b>Audit failed:</b> ' + esc(e.message||e) + '</div>';
       prog.textContent = "";
     }finally{ btn.disabled = false; }
@@ -541,11 +582,15 @@ try{var _p=JSON.parse(localStorage.getItem("syedSuite.preferences")||"null");var
     var shareLink = APP_URL + "#tab=health&url=" + encodeURIComponent(url);
     var shareText = "My site scored " + sf.score + "/100 on SEOForge — check yours free: " + shareLink;
     var saveLink = "./app.html#auth=signup&tab=health&url=" + encodeURIComponent(url);
+    /* The PageSpeed number is stamped with the run time: Google's score
+       varies run to run, so it is shown as a secondary line, never as a
+       stable badge — the Speed Score above is the stable measurement. */
+    var runTime = new Date().toLocaleTimeString("en-GB", {hour:"2-digit", minute:"2-digit"});
     out.innerHTML = '<div class="card" style="margin-top:12px"><div class="score-flex">' + scoreRing(sf.score)
       + '<div><p><b>SEOForge Speed Score — ' + sf.score + '/100 (' + esc(sf.grade) + ')</b></p>'
-      + '<p><b>' + passed + ' of ' + checks.length + ' checks passed.</b>' + (psiScore!=null ? ' · PageSpeed (mobile) <b>' + psiScore + '/100</b> <a href="https://pagespeed.web.dev/analysis?url=' + encodeURIComponent(url) + '" target="_blank" rel="noopener">verify</a>' : ' · PageSpeed could not be checked') + '</p></div></div>'
+      + '<p><b>' + passed + ' of ' + checks.length + ' checks passed.</b>' + (psiScore!=null ? ' · PageSpeed (mobile) <b>' + psiScore + '/100</b> at ' + runTime + ' <a href="https://pagespeed.web.dev/analysis?url=' + encodeURIComponent(url) + '" target="_blank" rel="noopener">verify</a>' : ' · PageSpeed could not be checked') + '</p></div></div>'
       + '<table><tr><th>Check</th><th>Result</th><th>Detail</th></tr>' + rows + '</table>'
-      + '<p class="muted">How this is measured: the live page was read just now — the title, meta description, H1 count, image alt text and viewport above are the real values from the page. PageSpeed is Google\u2019s API. The Speed Score is our own measurement — every sub-score shows its raw number.</p>'
+      + '<p class="muted">How this is measured: the live page was read just now — the title, meta description, H1 count, image alt text and viewport above are the real values from the page. PageSpeed is Google\u2019s API, and its score varies run to run. The Speed Score is our own measurement — every sub-score shows its raw number.</p>'
       + '<p class="muted">Free audit — full history and tracking need a free account.</p>'
       + '<div class="row"><button class="btn small" id="heroShareBtn" type="button">Share your score</button><a class="btn small" href="' + esc(saveLink) + '">Save this audit — create a free account</a></div>'
       + '<p class="muted" id="heroShareNote" role="status"></p></div>';
