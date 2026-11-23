@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SEOForge by Syeds Enterprises — SEO, Ads &amp; Links in One Place</title>
-<meta name="description" content="SEOForge v2.8: site audit, keyword explorer, rank tracking, link checks, SERP preview, broken-link and redirect checks, schema detector, robots/sitemap tools, content briefs, competitor compare, Search Console &amp; Analytics, ad revenue hub and link marketplace. Free plan or Pro $9/month. Free data sources only, no invented numbers.">
+<meta name="description" content="SEOForge v2.9: site audit, keyword explorer, rank tracking, link checks, SERP preview, broken-link and redirect checks, schema detector, robots/sitemap tools, content briefs, competitor compare, Search Console &amp; Analytics, ad revenue hub, link marketplace and an in-site AI assistant (your own key). Free plan or Pro $9/month. Free data sources only, no invented numbers.">
 <link rel="icon" href="./logo.png" type="image/png">
 <link rel="canonical" href="https://seoforge.syedsenterprises.org/">
 <meta property="og:title" content="SEOForge by Syeds Enterprises — SEO, Ads &amp; Links in One Place">
@@ -22,7 +22,7 @@
 <body>
 <header>
   <div class="wrap">
-    <h1>SEO<span>Forge</span> <span style="font-size:12px;color:#94a3b8;font-weight:400">v2.8</span></h1>
+    <h1>SEO<span>Forge</span> <span style="font-size:12px;color:#94a3b8;font-weight:400">v2.9</span></h1>
     <p>SEO audit, keywords, rank tracking, link checks, ad revenue &amp; link sales — one dashboard by Syeds Enterprises. Free sources only. No invented numbers.</p>
     <div id="authBar">
       <div id="authLoggedOut" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;width:100%">
@@ -352,6 +352,23 @@
     <p class="muted">Keys are stored <b>only in this browser's localStorage</b> and are never sent anywhere except to the service they belong to, when you run a check. Leave blank to keep using free no-key endpoints.</p>
     <label for="setPsi">Google PageSpeed Insights API key (free from Google Cloud Console — raises the daily quota)</label>
     <input type="text" id="setPsi" placeholder="Leave blank for no-key mode">
+    <h3 style="margin-top:14px">AI Assistant — your own key</h3>
+    <p class="muted">The in-site assistant ("Ask Forge" button, bottom right) answers SEO questions from your saved data. It runs on <b>your own AI key</b> — SEOForge stores no key server-side and pays nothing for your chats. Pick a provider, paste the key, save.</p>
+    <label for="setAiProvider">AI provider</label>
+    <select id="setAiProvider">
+      <option value="coarena">CoArena (your key)</option>
+      <option value="gemini">Google Gemini — free tier (AI Studio key)</option>
+      <option value="openai">OpenAI-compatible (custom URL)</option>
+    </select>
+    <label for="setAiKey">API key</label>
+    <input type="password" id="setAiKey" placeholder="Paste your key — stored only in this browser" autocomplete="off">
+    <label for="setAiBaseUrl">Provider base URL</label>
+    <input type="text" id="setAiBaseUrl" placeholder="e.g. https://generativelanguage.googleapis.com/v1beta/openai">
+    <label for="setAiModel">Model</label>
+    <input type="text" id="setAiModel" placeholder="e.g. gemini-2.0-flash">
+    <p class="muted" id="setAiHint"></p>
+    <button class="btn secondary" id="setAiTestBtn">Test the assistant</button>
+    <span class="muted" id="setAiTest"></span>
     <button class="btn" id="setSaveBtn">Save settings</button>
     <span class="muted" id="setSaved"></span>
     <div class="note">Revenue is logged manually. No ad-network credentials are collected.</div>
@@ -642,8 +659,17 @@
 
 </main>
 <footer>
-  SEOForge v2.8 — by Syeds Enterprises. Signed-in users' data is stored in their Supabase account; logged-out use stays in this browser (localStorage). Integrations: Google Search Console + Analytics (read-only OAuth, tokens in Supabase), PayPal subscriptions (verified by webhook), email alerts (opt-in). Free data sources only: Google PageSpeed Insights, Google Suggest, DuckDuckGo HTML results, public CORS proxies. No backlink index is faked; no search volume is invented. <a href="./privacy.html">Privacy Policy</a> · <a href="./terms.html">Terms of Service</a>
+  SEOForge v2.9 — by Syeds Enterprises. Signed-in users' data is stored in their Supabase account; logged-out use stays in this browser (localStorage). Integrations: Google Search Console + Analytics (read-only OAuth, tokens in Supabase), PayPal subscriptions (verified by webhook), email alerts (opt-in), AI assistant (runs on your own key). Free data sources only: Google PageSpeed Insights, Google Suggest, DuckDuckGo HTML results, public CORS proxies. No backlink index is faked; no search volume is invented. <a href="./privacy.html">Privacy Policy</a> · <a href="./terms.html">Terms of Service</a>
 </footer>
+</div>
+
+<button class="btn" id="agentBtn">Ask Forge</button>
+<div id="agentPanel" class="agent-panel" hidden>
+  <div class="agent-head"><b>Forge Assistant</b><span class="muted" id="agentLimit"></span><button class="btn secondary" id="agentCloseBtn">Close</button></div>
+  <div id="agentMsgs" class="agent-msgs"></div>
+  <div class="agent-input-row"><input type="text" id="agentInput" placeholder="Ask about your audit, keywords, SEO…" maxlength="2000"><button class="btn" id="agentSendBtn">Send</button></div>
+  <div class="prog" id="agentProg"></div>
+  <p class="muted">Runs on your own AI key (Settings). Free plan: 5 messages a day; Pro: unlimited. Your messages go to the provider you chose; SEOForge stores no key and no chat.</p>
 </div>
 
 <script src="./assets/core.js"></script>
