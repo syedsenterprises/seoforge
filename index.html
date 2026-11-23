@@ -22,7 +22,7 @@
 <body>
 <header>
   <div class="wrap">
-    <h1>SEO<span>Forge</span> <span style="font-size:12px;color:#94a3b8;font-weight:400">v2.9</span></h1>
+    <h1>SEO<span>Forge</span> <span style="font-size:12px;color:#94a3b8;font-weight:400">v2.9.2</span></h1>
     <p>SEO audit, keywords, rank tracking, link checks, ad revenue &amp; link sales — one dashboard by Syeds Enterprises. Free sources only. No invented numbers.</p>
     <div id="authBar">
       <div id="authLoggedOut" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;width:100%">
@@ -30,6 +30,8 @@
         <input type="password" id="authPass" placeholder="Password (min 6 characters)" autocomplete="current-password">
         <button type="button" class="ghost" id="forgotPassword">Reset password</button><button id="signInBtn" type="button">Sign in</button>
         <button id="signUpBtn" type="button" class="ghost">Create free account</button>
+        <button id="googleSignInBtn" type="button" class="ghost">Continue with Google</button>
+        <button id="resendBtn" type="button" class="ghost" hidden>Resend confirmation email</button>
         <span role="status" aria-live="polite" id="authMsg"></span>
       </div>
       <div id="authLoggedIn" hidden style="width:100%">
