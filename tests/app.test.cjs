@@ -100,19 +100,52 @@ test("Failed comparison persistence keeps the result and shows an unsaved warnin
 
 test("SEOForge Speed Score: fast light page scores 100",()=>{
   const a=app();
-  const sf=a.run(`scoreSpeedMetrics({ttfbMs:150,bytes:80000,textBytes:80000,blocking:0,encoding:"br",cache:"public, max-age=31536000, immutable",imgs:2,sized:2,raster:2,modern:2,resources:12})`);
+  const sf=a.run(`scoreSpeedMetrics({ttfbMs:150,bytes:80000,textBytes:80000,blocking:0,compressed:true,encoding:"",cache:"public, max-age=31536000, immutable",imgs:2,sized:2,raster:2,modern:2,resources:12})`);
   assert.equal(sf.score,100);
   assert.equal(sf.grade,"Excellent");
 });
 test("SEOForge Speed Score: slow heavy page scores 0",()=>{
   const a=app();
-  const sf=a.run(`scoreSpeedMetrics({ttfbMs:2400,bytes:1500000,textBytes:1500000,blocking:14,encoding:"",cache:"",imgs:10,sized:0,raster:10,modern:0,resources:120})`);
+  const sf=a.run(`scoreSpeedMetrics({ttfbMs:2400,bytes:1500000,textBytes:1500000,blocking:14,compressed:false,encoding:"",cache:"",imgs:10,sized:0,raster:10,modern:0,resources:120})`);
   assert.equal(sf.score,0);
   assert.equal(sf.grade,"Poor");
 });
 test("SEOForge Speed Score: missing timings still scores what was measured",()=>{
   const a=app();
-  const sf=a.run(`scoreSpeedMetrics({ttfbMs:null,bytes:null,textBytes:60000,blocking:2,encoding:"gzip",cache:"max-age=3600",imgs:0,sized:0,raster:0,modern:0,resources:15})`);
+  const sf=a.run(`scoreSpeedMetrics({ttfbMs:null,bytes:null,textBytes:60000,blocking:2,compressed:null,encoding:"gzip",cache:"max-age=3600",imgs:0,sized:0,raster:0,modern:0,resources:15})`);
   assert.equal(sf.score,66);
+  assert.equal(sf.grade,"Needs work");
+});
+
+test("Forge Assistant: provider endpoints resolve correctly",()=>{
+  const a=app();
+  assert.equal(a.run('agentEndpoint("gemini","")'),"https://generativelanguage.googleapis.com/v1beta/openai");
+  assert.equal(a.run('agentEndpoint("openai","")'),"https://api.openai.com/v1");
+  assert.equal(a.run('agentEndpoint("coarena","https://example.com/v1/")'),"https://example.com/v1");
+  assert.equal(a.run('agentModel("gemini","")'),"gemini-2.0-flash");
+  assert.equal(a.run('agentModel("openai","")'),"gpt-4o-mini");
+  assert.equal(a.run('agentModel("coarena","my-model")'),"my-model");
+});
+test("Forge Assistant: free daily limit allows 5 then blocks",()=>{
+  const a=app();
+  assert.equal(a.run("agentCanChat().ok"),true);
+  assert.equal(a.run("agentCanChat().left"),5);
+  a.run('LS.set("agentUsage",{date:todayISO(),used:5})');
+  assert.equal(a.run("agentCanChat().ok"),false);
+  a.run('LS.set("agentUsage",{date:todayISO(),used:4})');
+  assert.equal(a.run("agentCanChat().left"),1);
+});
+test("Forge Assistant: context describes the user's real data, never invented numbers",()=>{
+  const a=app();
+  const ctx=a.run("agentContext()");
+  assert.match(ctx,/SEOForge/);
+  assert.match(ctx,/plan: free/);
+  assert.match(ctx,/Never invent numbers/);
+});
+
+test("SEOForge Speed Score: compression that cannot be verified scores half, not zero",()=>{
+  const a=app();
+  const sf=a.run(`scoreSpeedMetrics({ttfbMs:null,bytes:null,textBytes:60000,blocking:2,compressed:null,encoding:"",cache:"max-age=3600",imgs:0,sized:0,raster:0,modern:0,resources:15})`);
+  assert.equal(sf.score,62);
   assert.equal(sf.grade,"Needs work");
 });
