@@ -19,7 +19,7 @@
 <script>
 /* Apply the saved theme before first paint (same key the app uses for guests).
    No network, no CDN — the landing loads no app code. */
-try{var _p=JSON.parse(localStorage.getItem("syedSuite.preferences")||"null");if(_p&&(_p.theme==="dark"||(_p.theme==="system"&&matchMedia("(prefers-color-scheme: dark)").matches)))document.documentElement.setAttribute("data-theme","dark");}catch(e){}
+try{var _p=JSON.parse(localStorage.getItem("syedSuite.preferences")||"null");var _t=_p?_p.theme:"system";if(_t==="dark"||(_t==="system"&&matchMedia("(prefers-color-scheme: dark)").matches))document.documentElement.setAttribute("data-theme","dark");}catch(e){}
 </script>
 <link rel="stylesheet" href="./assets/styles.css">
 </head>
