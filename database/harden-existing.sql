@@ -71,6 +71,10 @@ begin
  if (select auth.uid()) is null or (select auth.uid())<>new.user_id then
    raise exception 'Authenticated owner required';
  end if;
+ -- Owner (admin) account is unlimited — mirrors the client-side isAdmin()
+ -- bypass. Checked by email, not plan, so the owner never counts as a
+ -- paying Pro user.
+ if exists (select 1 from auth.users where id=new.user_id and lower(email)='syedsinterprises@gmail.com') then return new; end if;
  perform pg_advisory_xact_lock(hashtextextended(new.user_id::text,0));
  select plan into v_plan from public.profiles where id=new.user_id;
  if tg_table_name='keywords' then
