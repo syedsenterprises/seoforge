@@ -17,3 +17,6 @@ verify_jwt = false
 
 [functions.fetch-proxy]
 verify_jwt = false
+
+[functions.ai-agent]
+verify_jwt = false
