@@ -390,6 +390,13 @@ function isProxyErrorPage(status, text){
    Status codes from the proxy usually mirror the target; 500/522/408 are proxy failures, not proof the site is down. */
 async function fetchViaProxy(url, timeoutMs){
   let lastErr = null;
+  /* Own server-side proxy first (reliable); free public proxies as fallback. */
+  try{
+    const res = await fetchJsonTimeout(SUPABASE_URL+"/functions/v1/fetch-proxy", timeoutMs||15000, {method:"POST",headers:{"Content-Type":"application/json",apikey:SUPABASE_PUBLISHABLE_KEY,Authorization:"Bearer "+SUPABASE_PUBLISHABLE_KEY},body:JSON.stringify({url})});
+    const data = await res.json().catch(()=>({}));
+    if(res.ok && typeof data.text === "string") return {status:data.status||200, ok:!!data.ok, text:data.text};
+    lastErr = new Error(data.error||("Proxy error (HTTP "+res.status+")"));
+  }catch(e){ lastErr = e; }
   for(const p of PROXIES){
     try{
       const res = await fetchTimeout(p(url), timeoutMs||15000);
