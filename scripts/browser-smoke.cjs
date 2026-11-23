@@ -10,7 +10,7 @@ const path = require("node:path");
       const pathname=decodeURIComponent(new URL(req.url,"http://localhost").pathname);
       const file=path.resolve(root,"."+ (pathname==="/" ? "/index.html" : pathname));
       if(!file.startsWith(root+path.sep)){res.writeHead(403).end();return;}
-      const types={".html":"text/html",".js":"text/javascript",".css":"text/css"};
+      const types={".html":"text/html",".js":"text/javascript",".css":"text/css",".png":"image/png"};
       res.setHeader("Content-Type",types[path.extname(file)]||"text/plain");
       res.end(await fs.readFile(file));
     }catch{res.writeHead(404).end();}
@@ -37,7 +37,29 @@ const path = require("node:path");
       assert.equal(await page.locator(".feature").first().evaluate(el=>getComputedStyle(el).backgroundColor),"rgb(30, 41, 59)");
       assert.equal(await page.locator(".price-card").first().evaluate(el=>getComputedStyle(el).backgroundColor),"rgb(30, 41, 59)");
       assert.ok(!(await page.content()).includes("assets/app.js"),"landing must not load app.js");
+      /* 1b. Landing (v2.11.0): the three paths are real buttons, the showcase
+         tabs swap, the try-it box answers, the pricing toggle swaps prices,
+         the hero widget validates its input without any network. */
+      assert.equal(await page.locator('a.btn[href="./app.html#auth=signup"]').count(),14);
+      assert.ok(await page.locator(".landing-header img").isVisible());
+      await page.locator('button[data-showcase="keywords"]').click();
+      assert.ok(await page.locator("#showcase-keywords").isVisible());
+      assert.ok(await page.locator("#showcase-audit").isHidden());
+      await page.locator("#tryKw").fill("ai tools");
+      await page.locator("#tryKwBtn").click();
+      assert.match(await page.locator("#tryKwOut").innerText(),/Sample suggestions for "ai tools"/);
+      await page.locator('button[data-billing="yearly"]').click();
+      assert.match(await page.locator("#pricing").innerText(),/\$90\/year/);
+      assert.match(await page.locator("#pricing").innerText(),/Custom/);
+      await page.locator("#heroAuditBtn").click();
+      assert.match(await page.locator("#heroAuditOut").innerText(),/Enter a site URL first/);
+      assert.equal(await page.locator("#pricing .price-card").count(),4);
+      /* 1c. Share deep link: the Health Check opens with the URL prefilled. */
+      await page.goto(base+"/app.html#tab=health&url=https%3A%2F%2Fexample.com",{waitUntil:"networkidle"});
+      assert.ok(await page.locator("#tab-health").isVisible());
+      assert.equal(await page.locator("#hcUrl").inputValue(),"https://example.com");
       /* 2. Continue without an account -> app shell, auth view hidden. */
+      await page.goto(base,{waitUntil:"networkidle"}); /* 1c left the page on app.html */
       await page.locator('a[href="./app.html#guest"]').first().click();
       await page.waitForURL("**/app.html#guest");
       assert.ok(await page.locator("#appShell").isVisible());
