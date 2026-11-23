@@ -137,20 +137,37 @@ function hasSavedSession(){
   }catch(e){ return false; }
 }
 function showApp(){
+  delete document.documentElement.dataset.authView;
   const v = $("authView"); if(v) v.hidden = true;
   const s = $("appShell"); if(s) s.hidden = false;
 }
-/* Show the sign-in / create-account card. mode is "signin" or "signup" — it only
-   changes the heading; the form handles both. The app shell hides while the
-   auth card is up, so a logged-out reload shows the sign-in path, not a
-   half-rendered dashboard. */
+/* Show the sign-in / create-account card. mode is "signin" or "signup" and
+   the card shows exactly ONE primary button for that mode — the heading and
+   the primary always match, so a "Create" heading never sits over a
+   "Sign in" button. Reset password is sign-in only; the mode switch and the
+   guest entry are quiet text links below the actions. The header is minimal
+   while the card is up (html[data-auth-view="1"] hides the site switcher,
+   search and nav toggle in CSS), and the card centres vertically instead of
+   floating in a void. authMode also drives the Enter key, so the keyboard
+   submits the shown mode. */
+let authMode = "signin";
 function showAuthView(mode){
   const s = $("appShell"); if(s) s.hidden = true;
+  authMode = mode === "signup" ? "signup" : "signin";
+  document.documentElement.dataset.authView = "1";
   const v = $("authView");
   if(v){
     v.hidden = false;
     const t = $("authViewTitle");
-    if(t) t.textContent = mode === "signup" ? "Create your free account" : "Sign in to SEOForge";
+    if(t) t.textContent = authMode === "signup" ? "Create your free account" : "Sign in to SEOForge";
+    const si = elOrNull("signInBtn"); if(si) si.hidden = authMode !== "signin";
+    const su = elOrNull("signUpBtn"); if(su) su.hidden = authMode !== "signup";
+    const fp = elOrNull("forgotPassword"); if(fp) fp.hidden = authMode !== "signin";
+    const sw = elOrNull("authModeSwitch");
+    if(sw){
+      sw.textContent = authMode === "signup" ? "Already have an account? Sign in" : "No account yet? Create a free account";
+      sw.href = authMode === "signup" ? "#auth=signin" : "#auth=signup";
+    }
   }
   window.scrollTo({top:0});
 }
@@ -304,7 +321,6 @@ $("globalSearch").addEventListener("input", () => {
 });
 $("globalSearch").addEventListener("keydown", e => { if(e.key === "Enter"){ e.preventDefault(); globalSearchGo($("globalSearch").value); } });
 $("headerSignInBtn").addEventListener("click", focusAuth);
-$("headerGuestBtn").addEventListener("click", enterGuestMode);
 $("authGuestLink").addEventListener("click", enterGuestMode);
 /* The free-plan monthly limits apply to cloud users on the Free plan only.
    Every paid tier (Pro, Agency, Business) is unlimited — the old inline
@@ -711,7 +727,7 @@ async function doGoogleSignIn(){
 }
 $("googleSignInBtn").addEventListener("click", doGoogleSignIn);
 $("signOutBtn").addEventListener("click", doSignOut);
-$("authPass").addEventListener("keydown", e => { if(e.key === "Enter") doSignIn(); });
+$("authPass").addEventListener("keydown", e => { if(e.key === "Enter") (authMode === "signup" ? doSignUp() : doSignIn()); });
 async function initAuth(){
   if(!cloudAvailable){
     showAuthMsg("Cloud sign-in is unavailable. You can use local tools and retry later.");
