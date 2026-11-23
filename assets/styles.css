@@ -142,3 +142,15 @@ img{max-width:100%;height:auto}
 
 html[data-theme=dark] .feature,html[data-theme=dark] .price-card,html[data-theme=dark] .listing,html[data-theme=dark] .soc-card{background:var(--card);color:var(--ink)}
 #recoveryPanel{max-width:920px;margin:16px auto}
+
+  #agentBtn{position:fixed;right:16px;bottom:16px;z-index:50;border-radius:999px;padding:12px 18px;box-shadow:0 4px 16px rgba(15,23,42,.25)}
+  .agent-panel{position:fixed;right:16px;bottom:76px;z-index:50;width:min(380px,calc(100vw - 32px));max-height:min(560px,calc(100vh - 100px));display:flex;flex-direction:column;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:0 8px 28px rgba(15,23,42,.25);padding:12px}
+  .agent-panel[hidden]{display:none}
+  .agent-head{display:flex;align-items:center;gap:8px}
+  .agent-head .muted{flex:1;font-size:12px}
+  .agent-msgs{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:8px;margin:10px 0;min-height:120px}
+  .agent-msg{padding:8px 10px;border-radius:10px;font-size:14px;white-space:pre-wrap;word-break:break-word}
+  .agent-msg.user{background:var(--teal);color:#fff;align-self:flex-end;max-width:85%}
+  .agent-msg.ai{background:var(--bg);border:1px solid var(--line);align-self:flex-start;max-width:95%}
+  .agent-input-row{display:flex;gap:8px}
+  .agent-input-row input{flex:1}
