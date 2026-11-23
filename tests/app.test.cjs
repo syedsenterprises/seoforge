@@ -147,7 +147,9 @@ test("SEOForge Speed Score: slow heavy page scores 0",()=>{
 test("SEOForge Speed Score: missing timings still scores what was measured",()=>{
   const a=app();
   const sf=a.run(`scoreSpeedMetrics({ttfbMs:null,bytes:null,textBytes:60000,blocking:2,compressed:null,encoding:"gzip",cache:"max-age=3600",imgs:0,sized:0,raster:0,modern:0,resources:15})`);
-  assert.equal(sf.score,66);
+  /* R1: Images is N/A here (no images), so 51 earned points rescale over
+     the 85 applicable points: 51/85 = 60, not 51+15 = 66. */
+  assert.equal(sf.score,60);
   assert.equal(sf.grade,"Needs work");
 });
 
@@ -177,20 +179,25 @@ test("Forge Assistant: context describes the user's real data, never invented nu
   assert.match(ctx,/Never invent numbers/);
 });
 
-test("SEOForge Speed Score: compression that cannot be verified scores half, not zero",()=>{
+test("SEOForge Speed Score: compression that cannot be verified scores zero, not half",()=>{
   const a=app();
   const sf=a.run(`scoreSpeedMetrics({ttfbMs:null,bytes:null,textBytes:60000,blocking:2,compressed:null,encoding:"",cache:"max-age=3600",imgs:0,sized:0,raster:0,modern:0,resources:15})`);
-  assert.equal(sf.score,62);
+  /* Unmeasured means zero — the same rule as an unmeasured TTFB. Awarding
+     half marks here gave most free-proxy audits four unearned points. */
+  /* R1: same rescale — 43 earned over 85 applicable = 51, not 43+15 = 58. */
+  assert.equal(sf.score,51);
   assert.equal(sf.grade,"Needs work");
+  assert.match(sf.rows.find(r=>r.name==="Compression").detail,/No points awarded/);
 });
 
 test("Forge Assistant keyless mode: answers data questions without a key",()=>{
   const a=app();
-  a.run('LS.set("audits",[{url:"https://example.com",psi:87,ok:50,total:50}]); LS.set("keywords",[{keyword:"seo tools",url:"",checks:[]},{keyword:"ai directory",url:"",checks:[]}]); LS.set("rankChecks",[{id:"1"}]); LS.set("links",[{id:"1"},{id:"2"}]);');
+  a.run('LS.set("audits",[{url:"https://example.com",psi:87,ok:50,total:50}]); LS.set("keywords",[{keyword:"seo tools",url:"",checks:[{position:3,date:"2026-11-23"},{position:5,date:"2026-11-22"}]},{keyword:"ai directory",url:"",checks:[]}]); LS.set("links",[{id:"1",count:1},{id:"2",count:1}]);');
   assert.match(a.run('agentLocalAnswer("what is my latest audit score?")'),/87\/100/);
   assert.match(a.run('agentLocalAnswer("what is my latest audit score?")'),/example\.com/);
   assert.match(a.run('agentLocalAnswer("how many keywords am I tracking?")'),/2 keywords/);
   assert.match(a.run('agentLocalAnswer("how many keywords am I tracking?")'),/seo tools/);
+  assert.match(a.run('agentLocalAnswer("how many keywords am I tracking?")'),/2 rank checks/);
   assert.match(a.run('agentLocalAnswer("how many links have I verified?")'),/2 verified links/);
   assert.match(a.run('agentLocalAnswer("what is my plan?")'),/You're on the Free plan/);
   assert.match(a.run('agentLocalAnswer("what is my plan?")'),/5 free messages a day/);
@@ -375,7 +382,15 @@ test("Dashboard helpers: sparkline, site list, global search targets, skeleton",
   assert.equal(a.run('globalSearchTargets("https://example.com")[0].tab'),"audit");
   assert.equal(a.run('globalSearchTargets("ai tools")[0].tab'),"keywords");
   assert.equal(a.run('globalSearchTargets("")').length,0);
-  assert.equal(a.run('JSON.stringify(normalizeSiteList(["https://a.com","a.com","https://b.com","https://c.com","https://d.com"]))'),'["https://a.com","https://b.com","https://c.com"]'); /* stringify: vm arrays fail strict deepEqual across realms */
+  /* F2: normalizeSiteList normalises + dedupes but NEVER caps — capping on
+     read is what deleted sites 11–50 on a downgrade save. The plan limit
+     lives in activeSites() (the visible window), not in the stored list. */
+  assert.equal(a.run('JSON.stringify(normalizeSiteList(["https://a.com","a.com","https://b.com","https://c.com","https://d.com"]))'),'["https://a.com","https://b.com","https://c.com","https://d.com"]');
+  assert.equal(a.run('JSON.stringify(activeSites())'),'[]'); /* no sites stored yet */
+  a.run('LS.set("sites",["https://a.com","https://b.com","https://c.com","https://d.com"]);');
+  assert.equal(a.run('JSON.stringify(activeSites())'),'["https://a.com"]'); /* Free plan: 1 active site, 3 kept */
+  a.run('currentPlan="agency";');
+  assert.equal(a.run('JSON.stringify(activeSites())'),'["https://a.com","https://b.com","https://c.com","https://d.com"]'); /* Agency: 10 sites — stringify: vm arrays fail strict deepEqual across realms */
   assert.match(a.run("skeletonHtml(2)"),/skel/);
 });
 
@@ -594,7 +609,7 @@ test("Fix 9b: 'links verified' counts links found, not checks",()=>{
   const a=app();
   a.run('LS.set("links",[{id:"1",count:42},{id:"2",count:3}]);');
   a.run("renderDashboard()");
-  assert.equal(a.elements.get("stLinks").textContent,45);
+  assert.equal(a.elements.get("stLinks").textContent,"45 · 2 checks");
   assert.match(a.elements.get("stLinksStat").title,/2 link check\(s\) — 45 links found/);
 });
 /* ---------- v2.11.0: fix 10 — competitor duplicates ---------- */
@@ -661,9 +676,9 @@ test("Plan tiers: Free/Pro/Agency/Business limits and site counts",()=>{
   assert.equal(a.run("siteLimitForPlan()"),50);
   a.run('currentPlan="free";');
   assert.equal(a.run("siteLimitForPlan()"),1);
-  /* Owner stays unlimited on every tier. */
+  /* Owner stays unlimited on every tier (and is not capped below Business on sites). */
   a.run('currentUser={id:"x",email:"syedsinterprises@gmail.com"}; currentPlan="free";');
-  assert.equal(a.run("siteLimitForPlan()"),10);
+  assert.equal(a.run("siteLimitForPlan()"),50);
   assert.match(a.run("limitNoteText()"),/Admin — unlimited/);
   /* Free limits include the AI and site caps. */
   assert.equal(a.run("PLAN_LIMITS.aiMessagesPerDay"),5);
@@ -706,18 +721,188 @@ test("Share links: #tab=health&url= parses and validates the URL",()=>{
   assert.equal(a.run('parseShareHash("")'),"");
   assert.equal(a.run('parseTabHash("#tab=health&url=https%3A%2F%2Fexample.com")'),"health");
 });
-/* ---------- v2.11.0: featured listings ---------- */
+/* ---------- v2.11.1 audit fixes: save-link hash (#auth=signup&tab=health&url=) ---------- */
+test("Save links: #auth=signup&tab=health&url= parses tab, auth and URL",()=>{
+  const a=app();
+  const save="#auth=signup&tab=health&url=https%3A%2F%2Fexample.com";
+  assert.equal(a.run('parseShareHash("'+save+'")'),"https://example.com");
+  assert.equal(a.run('parseTabHash("'+save+'")'),"health");
+  assert.equal(a.run('parseAuthHash("'+save+'")'),"signup");
+  /* Same shape with signin, and a junk URL still validates to "". */
+  assert.equal(a.run('parseShareHash("#auth=signin&tab=health&url=example.com")'),"https://example.com");
+  assert.equal(a.run('parseShareHash("#auth=signup&tab=health&url=javascript%3Aalert(1)")'),"");
+});
+test("Paid tiers are unlimited: Agency/Business pass every free-plan limit gate",()=>{
+  const a=app();
+  a.run("S.mode='cloud';");
+  assert.equal(a.run("planLimitApplies()"),true); /* Free + cloud: limits apply */
+  a.run('currentPlan="pro";');
+  assert.equal(a.run("planLimitApplies()"),false);
+  a.run('currentPlan="agency";');
+  assert.equal(a.run("planLimitApplies()"),false);
+  a.run('currentPlan="business";');
+  assert.equal(a.run("planLimitApplies()"),false);
+  /* Local mode never limits; the owner never limits either. */
+  a.run('currentPlan="free"; S.mode="local";');
+  assert.equal(a.run("planLimitApplies()"),false);
+  a.run('S.mode="cloud"; currentUser={id:"x",email:"syedsinterprises@gmail.com"};');
+  assert.equal(a.run("planLimitApplies()"),false);
+});
+test("Share card leads with the stable Speed Score, PageSpeed stamped with run time",()=>{
+  const a=app();
+  const full=a.run('auditShareText({site:"https://example.com",score:73,sfScore:87,sfGrade:"Good",lcp:"4.4 s",cls:"0",date:"2026-11-23",time:"20:41"})');
+  assert.match(full,/Speed Score 87\/100/);
+  assert.ok(full.indexOf("Speed Score")<full.indexOf("PageSpeed"),"Speed Score must lead, PageSpeed is secondary");
+  assert.match(full,/PageSpeed 73\/100 at 20:41/);
+  assert.match(full,/varies run to run/);
+  /* PageSpeed-only mode (no Speed Score): PageSpeed still stamped, never a stable badge. */
+  const psiOnly=a.run('auditShareText({site:"https://example.com",score:54,sfScore:null,sfGrade:null,lcp:null,cls:null,date:"2026-11-23",time:"20:41"})');
+  assert.match(psiOnly,/PageSpeed 54\/100 at 20:41/);
+  assert.match(psiOnly,/varies run to run/);
+  assert.doesNotMatch(psiOnly,/Speed Score/);
+});
+test("PageSpeed direct call requests the SEO category (else the SEO list is always empty)",async()=>{
+  const a=app();
+  let captured="";
+  a.context.fetch=async(url)=>{ captured=String(url); throw new Error("stubbed"); };
+  await assert.rejects(a.run("runPSIDirect('https://example.com','mobile')"));
+  assert.match(captured,/category=performance&category=seo/);
+});
+/* ---------- v2.11.1 audit fixes (round 2): genuine reports + empty states + cloud-load gate ---------- */
+test("Content Brief stores the real H1 and the SERP title separately, never one as the other",()=>{
+  const a=app();
+  assert.doesNotMatch(code,/h1:p\.h1\|\|p\.title/);
+  assert.match(code,/h1:p\.h1\|\|null, serpTitle:p\.title\|\|null, words:p\.words, error:p\.error\|\|null/);
+  const out=a.run('briefHtml({keyword:"x",targetWordCount:100,headings:[],questions:[],competitors:[{url:"https://a.com",h1:null,serpTitle:"A Page Title",words:500},{url:"https://b.com",h1:null,serpTitle:null,words:null,error:"fetch failed"}]})');
+  assert.match(out,/A Page Title/); /* SERP title shown as the title, not as the H1 */
+  assert.match(out,/could not read/); /* failed page is labelled, not silently blank */
+});
+test("Sitemap generator never fabricates a <lastmod> date",()=>{
+  /* The emitted <url> element carries <loc> only — no <lastmod> stamped with
+     today's date (the generator never reads any page's real modification
+     date). The comment above the generator may mention the tag by name. */
+  assert.match(code,/'\s*<url><loc>' \+ esc\(u\) \+ '<\/loc><\/url>'/);
+  assert.doesNotMatch(code,/<\/loc><lastmod>/);
+});
+test("A share link pasted while already in the app runs the Health Check (hashchange)",()=>{
+  assert.match(code,/addEventListener\("hashchange"/);
+  assert.match(code,/const shared = parseShareHash\(location\.hash\);/);
+  assert.match(code,/if\(shared\)\{[\s\S]{0,400}runHealth\(\);/);
+});
+test("Hero fallback fetch times out instead of hanging the audit button",()=>{
+  assert.match(landing,/AbortController/);
+  assert.match(landing,/api\.allorigins\.win\/raw\?url=/);
+  assert.match(landing,/timed out after 15 seconds/);
+});
+test("Robots tab has a visible loading element",()=>{
+  assert.match(html,/id="rbProg"/);
+});
+test("Every tool tab has a static empty state (no blank output area)",()=>{
+  const hints={
+    kwOut:"No suggestions yet", serpOut:"No preview yet", blOut:"No link check yet",
+    rdOut:"No redirect trace yet", scOut:"No scan yet", rbOut:"No robots.txt fetched yet",
+    estOut:"No estimate yet", hcOut:"No health check yet", bkOut:"No bulk audit yet",
+    auditOut:"No audit yet", lvOut:"No link check yet", brOut:"No brief yet",
+    cpOut:"No comparison yet", gscOut:"No Search Console report yet", ga4Out:"No Analytics report yet",
+    rgOut:"No robots.txt generated yet", smOut:"No sitemap yet"
+  };
+  for(const [id, text] of Object.entries(hints)){
+    assert.match(html, new RegExp('id="'+id+'"><p class="muted">'+text));
+  }
+});
+test("Dashboard in cloud mode shows — until the account data loads (never fake zeros)",()=>{
+  const a=app();
+  a.run('S.mode="cloud"; S.cache.audits=[{url:"https://example.com",psi:80}];');
+  a.run("renderDashboard()");
+  assert.equal(a.elements.get("stAudits").textContent,"—");
+  assert.match(a.elements.get("dashHealth").innerHTML,/Loading your account data/);
+  a.run("renderDashboardExtras()");
+  assert.match(a.elements.get("revCompare").innerHTML,/Loading your account data/);
+  a.run('cloudDataFailed=true;');
+  a.run("renderDashboard()");
+  assert.match(a.elements.get("dashHealth").innerHTML,/could not load/);
+  a.run('cloudDataLoaded=true; cloudDataFailed=false;');
+  a.run("renderDashboard()");
+  assert.equal(a.elements.get("stAudits").textContent,1);
+});
+test("Revenue compare says 'nothing logged' when no entries exist (no bare $0.00 vs $0.00)",()=>{
+  const a=app();
+  a.run("renderDashboardExtras()");
+  assert.match(a.elements.get("revCompare").innerHTML,/nothing logged for this month or last month/);
+  a.run('LS.set("revenue",[{date:todayISO(),network:"AdSense",amount:12.5}]);');
+  a.run("renderDashboardExtras()");
+  assert.match(a.elements.get("revCompare").innerHTML,/\$12\.50 this month vs \$0\.00 last month/);
+});
+test("GSC/GA4 totals say 'not reported' when the API reports nothing (never a fake zero)",async()=>{
+  const a=app();
+  a.run('googleApi=async()=>({totals:{}});');
+  a.elements.get("gscSite").value="https://example.com";
+  a.elements.get("gscStart").value="2026-10-27";
+  a.elements.get("gscEnd").value="2026-11-23";
+  await a.run("runGscReport()");
+  assert.match(a.elements.get("gscOut").innerHTML,/not reported/);
+  assert.doesNotMatch(a.elements.get("gscOut").innerHTML,/0 clicks/);
+  a.run('googleApi=async()=>({sessions:null,users:null});');
+  a.elements.get("ga4Prop").value="properties/123";
+  await a.run("runGa4Report()");
+  assert.match(a.elements.get("ga4Out").innerHTML,/not reported/);
+  a.run('googleApi=async()=>({sessions:21,users:13});');
+  await a.run("runGa4Report()");
+  assert.match(a.elements.get("ga4Out").innerHTML,/21/);
+  assert.doesNotMatch(a.elements.get("ga4Out").innerHTML,/not reported/);
+});
 test("Featured listings: Agency/Admin only, featured sorts first",()=>{
   const a=app();
-  assert.equal(a.run('toggleFeaturedListing("seed-1")'),false); /* free user */
+  assert.equal(a.run('toggleFeaturedListing("custom-1")'),false); /* free user */
   a.run('currentPlan="agency";');
-  assert.equal(a.run('toggleFeaturedListing("seed-1")'),true);
-  assert.equal(a.run('featuredFirst([{id:"seed-2"},{id:"seed-1"}])[0].id'),"seed-1");
-  a.run('toggleFeaturedListing("seed-1")');
-  assert.equal(a.run('featuredFirst([{id:"seed-2"},{id:"seed-1"}])[0].id'),"seed-2");
+  assert.equal(a.run('toggleFeaturedListing("custom-1")'),true);
+  assert.equal(a.run('featuredFirst([{id:"custom-2"},{id:"custom-1"}])[0].id'),"custom-1");
+  a.run('toggleFeaturedListing("custom-1")');
+  assert.equal(a.run('featuredFirst([{id:"custom-2"},{id:"custom-1"}])[0].id'),"custom-2");
   /* Owner can feature without a plan. */
   a.run('currentUser={id:"x",email:"syedsinterprises@gmail.com"}; currentPlan="free";');
-  assert.equal(a.run('toggleFeaturedListing("seed-2")'),true);
+  assert.equal(a.run('toggleFeaturedListing("custom-2")'),true);
+});
+test("Featured listings: Business includes everything in Agency, so it can feature too",()=>{
+  const a=app();
+  a.run('currentPlan="business";');
+  assert.equal(a.run('toggleFeaturedListing("custom-1")'),true);
+  assert.equal(a.run("canFeatureListings()"),true);
+  a.run('currentPlan="pro";');
+  assert.equal(a.run('toggleFeaturedListing("custom-1")'),false);
+  assert.equal(a.run("canFeatureListings()"),false);
+});
+test("Forge counts: rank checks live in keywords[].checks, links are summed .count",()=>{
+  const a=app();
+  /* A stray rankChecks key (the old bug's source) must be ignored. */
+  a.run('LS.set("keywords",[{keyword:"a",url:"",checks:[{position:1},{position:2}]},{keyword:"b",url:"",checks:[{position:4}]}]); LS.set("rankChecks",[{id:"x"},{id:"y"},{id:"z"}]); LS.set("links",[{id:"1",count:42},{id:"2",count:3}]);');
+  assert.equal(a.run("agentDataCounts().ranks"),3);
+  assert.equal(a.run("agentDataCounts().links"),45);
+  assert.match(a.run('agentLocalAnswer("how many links have I verified?")'),/45 verified links/);
+  assert.match(a.run('agentLocalAnswer("how many keywords am I tracking?")'),/3 rank checks/);
+});
+test("Competitors: www. and bare host in the SAME run insert once",async()=>{
+  const a=app();
+  await a.run('recordCompetitors(["https://www.example.com","https://example.com"])');
+  assert.equal(a.run('S.get("competitors", []).length'),1);
+  /* Two genuinely different paths still insert as two rows. */
+  await a.run('recordCompetitors(["https://example.com/a","https://example.com/b"])');
+  assert.equal(a.run('S.get("competitors", []).length'),3);
+});
+test("Compares are counted by runs, not by stored rows",()=>{
+  const a=app();
+  a.run('LS.set("toolChecks",[{date:todayISO(),type:"compare",url:"a vs b"},{date:todayISO(),type:"compare",url:"c vs d"},{date:todayISO(),type:"broken-links",url:"x"}]);');
+  assert.equal(a.run("v25Usage().comparesUsed"),2);
+  assert.equal(a.run("v25Usage().toolChecksUsed"),1); /* "compare" rows do not consume the tool-checks limit */
+});
+test("Dashboard links stat shows the check count visibly, not only in a tooltip",()=>{
+  const a=app();
+  a.run('LS.set("links",[{id:"1",count:42}]);');
+  a.run("renderDashboard()");
+  assert.equal(a.elements.get("stLinks").textContent,"42 · 1 check");
+  a.run('LS.set("links",[{id:"1",count:40},{id:"2",count:2}]);');
+  a.run("renderDashboard()");
+  assert.equal(a.elements.get("stLinks").textContent,"42 · 2 checks");
 });
 /* ---------- v2.11.0: trust helpers ---------- */
 test("Trust: score ring, verify link, measured line",()=>{
@@ -739,10 +924,82 @@ test("App presentation: every tab section has a page header, the guest action is
 test("Landing: the three paths are real buttons with the right destinations",()=>{
   assert.match(landing,/<a class="btn" href="\.\/app\.html#auth=signup">Create free account<\/a>/);
   assert.match(landing,/<a class="btn secondary" href="\.\/app\.html#auth=signin">Sign in<\/a>/);
-  assert.match(landing,/<a class="btn-ghost" href="\.\/app\.html#guest">Continue without an account<\/a>/);
-  assert.equal((landing.match(/href="\.\/app\.html#auth=signup"/g)||[]).length,14); /* primary CTA repeats after every section */
+  assert.match(landing,/<a class="text-link" href="\.\/app\.html#guest">Continue without an account<\/a>/); /* guest path is a quiet text link, not a button */
+  assert.equal((landing.match(/href="\.\/app\.html#auth=signup"/g)||[]).length,6); /* header + hero + 3 pricing cards + closing — no repeats after sections */
   assert.doesNotMatch(landing,/assets\/app\.js/); /* the landing never loads the app */
   assert.match(landing,/assets\/core\.js/); /* the hero widget needs the shared scoring module */
+});
+/* ---------- v2.11.x: landing CTA discipline + mobile hamburger ---------- */
+test("Landing: account buttons live only where the user decides — no repeated pairs after sections",()=>{
+  /* "Create free account" appears exactly 3 times: header, hero, closing.
+     Pricing cards use "Create a free account" (a different string). */
+  assert.equal((landing.match(/>Create free account</g)||[]).length,3);
+  assert.equal((landing.match(/href="\.\/app\.html#auth=signup"/g)||[]).length,6); /* header + hero + 3 pricing + closing */
+  assert.equal((landing.match(/href="\.\/app\.html#auth=signin"/g)||[]).length,1); /* header only */
+  assert.equal((landing.match(/<div class="cta">/g)||[]).length,2); /* hero + closing only */
+  assert.doesNotMatch(landing,/btn-ghost/); /* no ghost buttons left on the landing */
+  /* The only "Sign in" text outside the header button is the FAQ sentence. */
+  assert.equal((landing.match(/Sign in/g)||[]).length,2);
+});
+test("Landing: mobile header is a hamburger that opens the same nav + auth as a dropdown",()=>{
+  assert.match(landing,/<button id="landingNavToggle" class="landing-nav-toggle" type="button" aria-expanded="false" aria-controls="landingNavPanel" aria-label="Menu">/);
+  assert.match(landing,/<div class="landing-nav-panel" id="landingNavPanel">/);
+  assert.match(landing,/landingHeader\.classList\.toggle\("nav-open"\)/);
+  assert.match(landing,/navToggle\.setAttribute\("aria-expanded"/);
+  const css=fs.readFileSync("assets/styles.css","utf8");
+  assert.match(css,/\.landing-nav-toggle\{display:none/); /* hidden on desktop */
+  assert.match(css,/@media \(max-width:768px\)/);
+  assert.match(css,/\.landing-header\.nav-open \.landing-nav-panel\{display:flex/); /* panel opens as a dropdown */
+  assert.match(css,/\.landing-nav-panel\{display:contents\}/); /* layout-transparent on desktop */
+  /* Header contrast (the audit fix) is intact in the stylesheet: the header
+     is an accent tint (never a hardcoded dark block) and its text is the
+     theme ink, so it stays readable in light and dark themes. */
+  assert.match(css,/\.landing-header\{[^}]*background:var\(--accent-tint\)/);
+  assert.match(css,/\.landing-nav a\{color:var\(--ink\)/);
+  assert.match(css,/\.landing-auth a\.btn\.secondary\{[^}]*border-color:var\(--accent-line\)/);
+});
+test("Accent: applyPreferences sets --accent and the --teal alias live, no reload",()=>{
+  const a=app();
+  const seen={};
+  a.context.document.documentElement.style.setProperty=(k,v)=>{seen[k]=v;};
+  a.run('applyPreferences(SEOForgeCore.validatePreferences({theme:"light",accent:"#7c3aed"}))');
+  assert.deepEqual(seen,{"--accent":"#7c3aed","--teal":"#7c3aed","--accent-on":"#ffffff","--accent-dark":"#7c3aed","--accent-ink":"#7c3aed"});
+  /* Saving through Settings persists the pick in the same store the
+     landing reads, so landing and app always agree. */
+  a.run('LS.set("preferences",SEOForgeCore.validatePreferences({accent:"#ea580c"}))');
+  assert.equal(a.run('LS.get("preferences",{}).accent'),"#ea580c");
+  assert.equal(a.run('SEOForgeCore.validatePreferences(LS.get("preferences",{})).accent'),"#ea580c");
+});
+test("Accent: the Good score band follows --accent, other bands keep their meaning",()=>{
+  const a=app();
+  const good=a.run('scoreRingSVG(85)');
+  assert.match(good,/stroke:var\(--accent\)/);
+  assert.doesNotMatch(good,/#0f766e/);
+  assert.match(a.run('scoreRingSVG(73)'),/stroke:var\(--accent\)/);
+  assert.match(a.run('scoreRingSVG(95)'),/#15803d/); /* Excellent stays green */
+  assert.match(a.run('scoreRingSVG(60)'),/#b45309/); /* Needs work stays amber */
+  assert.match(a.run('scoreRingSVG(40)'),/#b91c1c/); /* Poor stays red */
+  assert.match(a.run('scoreRingSVG(null)'),/#94a3b8/); /* not scored stays grey */
+  assert.doesNotMatch(a.run('scoreRingSVG(85)'),/stroke="#0f766e"/);
+});
+test("Accent: landing and app pre-paint scripts read the same stored accent",()=>{
+  /* Both pages read localStorage key "syedSuite.preferences" (the guest key
+     Settings writes) and set --accent + --teal before first paint. */
+  assert.match(landing,/localStorage\.getItem\("syedSuite\.preferences"\)/);
+  assert.match(landing,/setProperty\("--accent",_a\)/);
+  assert.match(landing,/setProperty\("--teal",_a\)/);
+  assert.match(html,/localStorage\.getItem\("syedSuite\.preferences"\)/);
+  assert.match(html,/setProperty\("--accent",_a\)/);
+  /* The landing hero ring's Good band follows --accent too (or the darkened
+     form for a light accent — ringVar), and the landing re-applies the
+     accent on storage events (live, no reload). */
+  assert.match(landing,/var ringVar = "var\(--accent\)"/);
+  assert.match(landing,/style="stroke:'\+ringVar\+'"/);
+  assert.match(landing,/addEventListener\("storage"/);
+  /* R2b: both pre-paint scripts also read the signed-in user's namespaced
+     prefs key (from the saved session token) before the guest key. */
+  assert.match(landing,/syedSuite\.user\."\+_uid\+"\.preferences/);
+  assert.match(html,/syedSuite\.user\."\+_uid\+"\.preferences/);
 });
 test("Landing: the showcase is a labelled demo, never our own site's numbers",()=>{
   assert.match(landing,/Demo — real run of example\.com/);
@@ -807,4 +1064,454 @@ test("Landing: every nav and footer link resolves to a real target",()=>{
   for(const t of tabs) assert.ok(landing.includes('./app.html#tab='+t),"footer missing "+t);
   assert.ok(landing.includes('./privacy.html'));
   assert.ok(landing.includes('./terms.html'));
+});
+
+/* ---------- v2.11.0 round 3: human-audit fixes ---------- */
+/* Shared setup for runAudit tests: a fake DOMParser that reads <loc> values
+   out of sitemap XML (and reports a <parsererror> for HTML error pages). */
+function auditSetup(a, n){
+  a.context.DOMParser=class{
+    parseFromString(text){
+      const t=String(text||"");
+      const isIndex=/<sitemapindex/i.test(t);
+      const locs=[...t.matchAll(/<loc>([^<]+)<\/loc>/g)].map(m=>({textContent:m[1]}));
+      const isHtml=/<html/i.test(t);
+      return {
+        querySelectorAll:(sel)=> sel==="url > loc" ? (isIndex?[]:locs) : sel==="sitemap > loc" ? (isIndex?locs:[]) : [],
+        querySelector:(sel)=> sel==="parsererror" ? (isHtml?{}:null) : null,
+        documentElement:{tagName:isHtml?"html":(isIndex?"sitemapindex":"urlset")},
+        body:null
+      };
+    }
+  };
+  const urls=Array.from({length:n},(_,i)=>"https://example.com/p"+i);
+  a.run('__sitemapXml="<urlset>'+urls.map(u=>"<url><loc>"+u+"</loc></url>").join("")+'</urlset>";');
+  a.elements.get("auditUrl").value="https://example.com";
+  return urls;
+}
+test("N1: Agency saves 10 sites, reload refills all 10 slots, re-save keeps 10",()=>{
+  const a=app();
+  const sites=Array.from({length:10},(_,i)=>"https://site"+(i+1)+".example");
+  a.run('currentPlan="agency";');
+  a.run('LS.set("sites",'+JSON.stringify(sites)+');');
+  a.run("loadSiteSlots()");
+  for(let i=1;i<=10;i++) assert.equal(a.elements.get("siteSlot"+i).value,sites[i-1]);
+  a.elements.get("siteSaveBtn").listeners.click();
+  assert.equal(a.run('LS.get("sites", []).length'),10);
+  assert.equal(a.run('JSON.stringify(LS.get("sites", []))'),JSON.stringify(sites));
+});
+test("N1/B4: Business gets dynamic slots up to the 50-site plan limit",()=>{
+  const a=app();
+  const sites=Array.from({length:12},(_,i)=>"https://site"+(i+1)+".example");
+  a.run('currentPlan="business";');
+  a.run('LS.set("sites",'+JSON.stringify(sites)+');');
+  a.run("loadSiteSlots()");
+  assert.equal(a.run("extraSiteSlotEls.length"),40);
+  assert.equal(a.elements.get("siteSlot1").value,"https://site1.example");
+  assert.equal(a.run("extraSiteSlotEls[1].input.value"),"https://site12.example");
+  a.elements.get("siteSaveBtn").listeners.click();
+  assert.equal(a.run('LS.get("sites", []).length'),12);
+  /* Dropping back to Free removes the extra slots — and the save caps at 1. */
+  a.run('currentPlan="free"; loadSiteSlots();');
+  assert.equal(a.run("extraSiteSlotEls.length"),0);
+});
+test("N4: a failed save never erases a Broken Links result",async()=>{
+  const a=app();
+  a.elements.set("blCsvBtn",a.elements.get("blBtn"));
+  a.run('recordToolCheck=async()=>{throw new Error("insert failed")};');
+  a.run('fetchPageDoc=async()=>({doc:{querySelectorAll:()=>[],querySelector:()=>null},status:200,text:""});');
+  a.elements.get("blUrl").value="https://example.com";
+  await a.run("runBrokenLinks()");
+  const out=a.elements.get("blOut").innerHTML;
+  assert.match(out,/0 OK/);
+  assert.match(out,/could not be saved to your history/);
+  assert.doesNotMatch(out,/Check failed/);
+});
+test("N4: a failed save never erases a Schema result",async()=>{
+  const a=app();
+  a.run('recordToolCheck=async()=>{throw new Error("insert failed")};');
+  a.run('fetchPageDoc=async()=>({doc:{querySelectorAll:()=>[],querySelector:()=>null},status:200,text:""});');
+  a.elements.get("scUrl").value="https://example.com";
+  await a.run("runSchema()");
+  const out=a.elements.get("scOut").innerHTML;
+  assert.match(out,/No JSON-LD found/);
+  assert.match(out,/could not be saved to your history/);
+  assert.doesNotMatch(out,/Check failed/);
+});
+test("N4: a failed save never erases a Robots result (404 branch)",async()=>{
+  const a=app();
+  a.run('recordToolCheck=async()=>{throw new Error("insert failed")};');
+  a.run('fetchViaProxy=async()=>({status:404,ok:false,text:""});');
+  a.elements.get("rbSite").value="https://example.com";
+  await a.run("runRobotsFetch()");
+  const out=a.elements.get("rbOut").innerHTML;
+  assert.match(out,/No robots\.txt found/);
+  assert.match(out,/could not be saved to your history/);
+  assert.doesNotMatch(out,/Fetch failed/);
+});
+test("N4: a failed save never erases a Sitemap result",async()=>{
+  const a=app();
+  a.elements.set("smCopyBtn",a.elements.get("smBtn"));
+  a.elements.set("smDlBtn",a.elements.get("smBtn"));
+  a.run('recordToolCheck=async()=>{throw new Error("insert failed")};');
+  a.run('fetchPageDoc=async()=>({doc:{querySelectorAll:()=>[],querySelector:()=>null},status:200,text:""});');
+  a.elements.get("smSite").value="https://example.com";
+  await a.run("runSitemapGen()");
+  const out=a.elements.get("smOut").innerHTML;
+  assert.match(out,/1 internal URL\(s\) found/);
+  assert.match(out,/could not be saved to your history/);
+  assert.doesNotMatch(out,/Generation failed/);
+});
+test("N5: the Rank Tracker Add button disables during the save and restores after",async()=>{
+  const a=app();
+  a.run('saveKeyword=async(kw,url)=>{ await new Promise(r=>{__saveGate=r;}); const list=LS.get("keywords",[]); list.push({keyword:kw,url:url||"",checks:[],difficulty:null}); LS.set("keywords",list); return "saved"; };');
+  a.elements.get("rkKw").value="seo tools";
+  a.elements.get("rkUrl").value="https://example.com";
+  const btn=a.elements.get("rkAddBtn");
+  const done=btn.listeners.click();
+  assert.equal(btn.disabled,true);
+  assert.equal(btn.textContent,"Saving…");
+  a.context.__saveGate("saved");
+  await done;
+  assert.equal(btn.disabled,false);
+  assert.equal(btn.textContent,"Add to tracker");
+  assert.equal(a.run('LS.get("keywords", []).length'),1);
+});
+test("N5: revenue and listing Add buttons disable during the save (finally restores)",()=>{
+  assert.match(code,/\$\("revAddBtn"\)\.addEventListener\("click", async \(\) => \{[\s\S]*?btn\.disabled = true; btn\.textContent = "Logging…"/);
+  assert.match(code,/btn\.disabled = false; btn\.textContent = "Log revenue"/);
+  assert.match(code,/\$\("mkAddBtn"\)\.addEventListener\("click", async \(\) => \{[\s\S]*?btn\.disabled = true; btn\.textContent = "Adding…"/);
+  assert.match(code,/btn\.disabled = false; btn\.textContent = "Add listing"/);
+});
+test("N6: a PayPal cancel return says no charge was made and strips the token",()=>{
+  const a=app("?token=BA-123CANCEL");
+  assert.equal(a.run("handlePaypalReturn()"),true);
+  assert.match(a.elements.get("topBanner").textContent,/Checkout cancelled — no charge was made and your plan is unchanged/);
+  assert.equal(a.run("currentPlan"),"free");
+});
+test("N7: Admin compares use the run count, not floor(rows/2)",async()=>{
+  const a=app();
+  a.run('fillAdminHealth=async()=>{}; fillAdminPay=async()=>{}; fillAdminUsers=async()=>{};');
+  a.run('currentUser={id:"owner",email:"syedsinterprises@gmail.com"}; currentPlan="free";');
+  a.run('LS.set("toolChecks",[{date:todayISO(),type:"compare",url:"a vs b"}]);');
+  a.run("renderAdminSection()");
+  await a.run("renderAdmin()");
+  assert.match(a.run("adminPanelEl.innerHTML"),/Competitor compares: <b>1<\/b>/);
+});
+test("N12: guest work is explained on first sign-in, once, never auto-uploaded",async()=>{
+  const a=app();
+  a.run('LS.set("audits",[{date:todayISO(),url:"https://example.com"}]);');
+  await a.run('afterSignIn({id:"u1",email:"a@example.com"})');
+  assert.match(a.elements.get("topBanner").textContent,/Your guest work stays in this browser/);
+  assert.match(a.elements.get("topBanner").textContent,/export it from Workspace settings/);
+  assert.equal(a.run('S.cache.audits.length'),0);
+  a.elements.get("topBanner").textContent="";
+  await a.run('afterSignIn({id:"u1",email:"a@example.com"})');
+  assert.equal(a.elements.get("topBanner").textContent,"");
+});
+test("N13/F12: showTab keeps &url= on the Health tab, strips it elsewhere",()=>{
+  const a=app();
+  let seen="";
+  a.context.history={pushState:(s,t,u)=>{seen=u;},replaceState:(s,t,u)=>{seen=u;}};
+  a.context.location.hash="#tab=health&url=https%3A%2F%2Fexample.com";
+  a.run('showTab("health", true)');
+  assert.match(seen,/#tab=health&url=https%3A%2F%2Fexample.com/);
+  /* F12: on a non-health tab &url= is a dead share link — strip it. */
+  a.context.location.hash="#tab=health&url=https%3A%2F%2Fexample.com";
+  a.run('showTab("dashboard", true)');
+  assert.equal(seen,"#tab=dashboard");
+  assert.doesNotMatch(seen,/url=/);
+});
+test("N14: Site Audit stops at the 120 s deadline with partial results",async()=>{
+  const a=app();
+  auditSetup(a,10);
+  a.run('fetchViaProxy=async(u)=> u.includes("sitemap") ? {status:200,ok:true,text:__sitemapXml} : {status:200,ok:true};');
+  /* Fake clock: the first two Date.now() calls are the audit start, every
+     later call is 121 s on — so the second batch never starts. */
+  a.run('__t0=Date.now(); __calls=0; Date=class extends Date{ static now(){ __calls++; return __calls<=2 ? __t0 : __t0+121000; } };');
+  await a.run("runAudit(false)");
+  const out=a.elements.get("auditOut").innerHTML;
+  assert.match(out,/Stopped after 120 s — 5 of 10 URLs checked/);
+  assert.match(out,/Sitemap crawl — 5 URLs/);
+  assert.match(out,/5 reachable/);
+});
+test("N14: Site Audit Cancel stops the crawl with partial results",async()=>{
+  const a=app();
+  auditSetup(a,10);
+  a.run('__resolvers=[]; fetchViaProxy=async(u)=> u.includes("sitemap") ? {status:200,ok:true,text:__sitemapXml} : new Promise(r=>__resolvers.push(r));');
+  const done=a.run("runAudit(false)");
+  await new Promise(r=>setTimeout(r,25));
+  a.run("auditCancelled=true;");
+  a.run("__resolvers.forEach(r=>r({status:200,ok:true}));");
+  await done;
+  const out=a.elements.get("auditOut").innerHTML;
+  assert.match(out,/Audit cancelled — 5 of 10 URLs checked/);
+  assert.match(out,/Sitemap crawl — 5 URLs/);
+});
+test("N16: a full localStorage keeps the audit result and warns instead",async()=>{
+  const a=app();
+  auditSetup(a,1);
+  a.run('fetchViaProxy=async(u)=> u.includes("sitemap") ? {status:200,ok:true,text:__sitemapXml} : {status:200,ok:true,text:"<html><head><title>t</title></head><body>hi</body></html>"};');
+  a.run('runPSI=async()=>({score:80,lcp:"1.0 s",cls:"0",seo:[],finalUrl:"https://example.com"});');
+  a.run('__origSet=LS.set; LS.set=(k,v)=>{ if(k==="audits") throw new Error("storage full"); return __origSet.call(LS,k,v); };');
+  await a.run("runAudit(false)");
+  const out=a.elements.get("auditOut").innerHTML;
+  assert.match(out,/PageSpeed Insights/);
+  assert.match(out,/This audit ran, but saving it failed/);
+  assert.doesNotMatch(out,/Check failed/);
+});
+test("N17: featured badge and sort vanish on a plan downgrade",()=>{
+  const a=app();
+  a.run('currentPlan="agency"; toggleFeaturedListing("custom-1");');
+  a.run('LS.set("listings",[{id:"custom-1",site:"https://example.com",niche:"Test",price:10,da:"",dr:"",title:"Example",desc:"d"}]);');
+  a.run("renderMarket()");
+  assert.match(a.elements.get("mktList").innerHTML,/Featured/);
+  assert.equal(a.run('featuredFirst([{id:"custom-2"},{id:"custom-1"}])[0].id'),"custom-1");
+  a.run('currentPlan="pro"; renderMarket();');
+  assert.doesNotMatch(a.elements.get("mktList").innerHTML,/Featured/);
+  assert.equal(a.run('featuredFirst([{id:"custom-2"},{id:"custom-1"}])[0].id'),"custom-2");
+});
+test("N18: seed listings can never be force-featured via stored ids",()=>{
+  const a=app();
+  a.run('currentPlan="agency";');
+  assert.equal(a.run('toggleFeaturedListing("seed-1")'),false);
+  assert.equal(a.run('toggleFeaturedListing("custom-9")'),true);
+  a.run('LS.set("featuredListings",["seed-1","custom-9"]);');
+  assert.equal(a.run('featuredFirst([{id:"seed-1"},{id:"custom-9"},{id:"custom-2"}])[0].id'),"custom-9");
+  /* Even with only a seed id stored, it never sorts first. */
+  a.run('LS.set("featuredListings",["seed-1"]);');
+  assert.equal(a.run('featuredFirst([{id:"custom-2"},{id:"seed-1"}])[0].id'),"custom-2");
+});
+test("N19: default site is only the fallback when My-sites is empty",()=>{
+  const a=app();
+  a.run('LS.set("preferences",{defaultSite:"https://default.example"}); LS.set("sites",[]);');
+  assert.equal(a.run("selectedSite()"),"https://default.example");
+  a.run('currentPlan="agency"; LS.set("sites",["https://a.example","https://b.example"]); LS.set("selectedSite","https://b.example");');
+  assert.equal(a.run("selectedSite()"),"https://b.example");
+  /* applyPreferences must not overwrite what applySelectedSite filled. */
+  a.run('applyPreferences(SEOForgeCore.validatePreferences(LS.get("preferences",{})))');
+  assert.equal(a.elements.get("auditUrl").value,"https://b.example");
+  assert.doesNotMatch(code,/el\.value=p\.defaultSite/);
+});
+test("N19: the last-run audit URL still beats the default site on reload",()=>{
+  const a=app();
+  a.run('LS.set("preferences",{defaultSite:"https://example.com"}); LS.set("lastAuditUrl","https://example.org"); LS.set("sites",[]);');
+  a.run('applyPreferences(SEOForgeCore.validatePreferences(LS.get("preferences",{})))');
+  assert.equal(a.elements.get("auditUrl").value,"https://example.org");
+  /* …while the other tool inputs still take the default site. */
+  assert.equal(a.elements.get("serpUrl").value,"https://example.com");
+});
+test("B1: no alert() or confirm() calls remain in the app",()=>{
+  assert.doesNotMatch(code,/alert\(/);
+  assert.doesNotMatch(code,/confirm\(/);
+});
+test("B2: loading indicators on rank/ads/market saves and the GSC status check",()=>{
+  assert.match(code,/btn\.textContent = "Saving…"/);
+  assert.match(code,/btn\.textContent = "Logging…"/);
+  assert.match(code,/btn\.textContent = "Adding…"/);
+  assert.match(code,/b\.textContent = "Deleting…"/);
+  assert.match(code,/Checking Google connection…/);
+});
+test("B3: a child sitemap that 404s is never parsed as a sitemap",async()=>{
+  const a=app();
+  auditSetup(a,0);
+  a.run('fetchViaProxy=async(u)=> u.includes("child.xml") ? {status:404,ok:false,text:""} : {status:200,ok:true,text:"<sitemapindex><sitemap><loc>https://example.com/child.xml</loc></sitemap></sitemapindex>"};');
+  await a.run("runAudit(false)");
+  assert.match(a.elements.get("auditOut").innerHTML,/Child sitemap fetch failed \(HTTP 404\)/);
+});
+test("B3: a child sitemap that returns an error page is rejected, not parsed",async()=>{
+  const a=app();
+  auditSetup(a,0);
+  a.run('fetchViaProxy=async(u)=> u.includes("child.xml") ? {status:200,ok:true,text:"<html><body>Sorry, this page is unavailable</body></html>"} : {status:200,ok:true,text:"<sitemapindex><sitemap><loc>https://example.com/child.xml</loc></sitemap></sitemapindex>"};');
+  await a.run("runAudit(false)");
+  assert.match(a.elements.get("auditOut").innerHTML,/did not return a valid sitemap/);
+});
+test("B3: SERP and Suggest refuse non-2xx bodies instead of parsing them",async()=>{
+  const a=app();
+  a.run('fetchViaProxy=async()=>({status:403,ok:false,text:"blocked"});');
+  await assert.rejects(a.run('serpTopResults("seo tools", 5)'),/HTTP 403/);
+  await assert.rejects(a.run('suggestOne("seo tools")'),/HTTP 403/);
+});
+test("D4/D5: no-image pages score Images N/A and rescale, never full marks",()=>{
+  const a=app();
+  const noImg=a.run('SEOForgeCore.scoreSpeedMetrics({ttfbMs:100,bytes:1000,textBytes:1000,blocking:0,compressed:true,encoding:"",cache:"",imgs:0,sized:0,raster:0,modern:0,resources:1})');
+  const noImgRow=noImg.rows.find(r=>r.name==="Images");
+  assert.equal(noImgRow.na,true);
+  assert.equal(noImgRow.pts,null);
+  assert.match(noImgRow.detail,/not applicable/);
+  assert.equal(noImg.score,92); /* 78 earned over 85 applicable points */
+  const vec=a.run('SEOForgeCore.scoreSpeedMetrics({ttfbMs:100,bytes:1000,textBytes:1000,blocking:0,compressed:true,encoding:"",cache:"",imgs:2,sized:2,raster:0,modern:0,resources:1})');
+  const vecRow=vec.rows.find(r=>r.name==="Images");
+  assert.equal(vecRow.pts,7); /* dimensions only — the format half is N/A */
+  assert.equal(vecRow.max,7);
+  assert.match(vecRow.detail,/not applicable/);
+  assert.equal(vec.score,92); /* 85 earned over 92 applicable points */
+  /* The N/A row renders as "N/A", never "null / 15". */
+  assert.match(a.run('speedScoreHtml('+JSON.stringify(noImg)+')'),/N\/A/);
+  assert.doesNotMatch(a.run('speedScoreHtml('+JSON.stringify(noImg)+')'),/null \/ 15/);
+});
+test("N15: disconnecting Google arms an inline confirm row, never a modal",async()=>{
+  const a=app();
+  let called=false;
+  a.run('googleApi=async()=>{__googleCalled=true; return {};};');
+  await a.run("disconnectGoogle()");
+  assert.match(a.elements.get("gscDisconnectConfirm").innerHTML,/Disconnect Google\?/);
+  assert.match(a.elements.get("gscDisconnectConfirm").innerHTML,/Yes, disconnect/);
+  assert.match(a.elements.get("gscDisconnectConfirm").innerHTML,/Keep connected/);
+  assert.equal(a.context.__googleCalled,undefined);
+  await a.run("doDisconnectGoogle()");
+  assert.equal(a.context.__googleCalled,true);
+  assert.match(a.elements.get("topBanner").textContent,/Google disconnected/);
+});
+
+/* ------------------------------------------------------------------ */
+/* Round-4 fix tests (F2/F3/F4/F5/F6/F7/F8/F9/F15/R2/R3)               */
+/* ------------------------------------------------------------------ */
+
+test("F2: a plan downgrade never deletes stored sites on save",()=>{
+  const a=app();
+  const sites=Array.from({length:50},(_,i)=>"https://site"+(i+1)+".example");
+  a.run('currentPlan="business";');
+  a.run('LS.set("sites",'+JSON.stringify(sites)+');');
+  a.run("loadSiteSlots()");
+  assert.equal(a.run("activeSites().length"),50);
+  a.run('currentPlan="agency"; loadSiteSlots();');
+  assert.equal(a.run("activeSites().length"),10);
+  assert.equal((a.elements.get("siteKeptList").innerHTML.match(/data-remove-kept/g)||[]).length,40);
+  a.elements.get("siteSaveBtn").listeners.click();
+  assert.deepEqual(a.run('LS.get("sites", [])'),sites);
+  assert.match(a.elements.get("siteSaved").textContent,/40 extra kept/);
+  /* Kept-list Remove deletes exactly one site, and only a kept one. */
+  a.run('removeKeptSite(0);');
+  assert.equal(a.run('LS.get("sites", []).length'),49);
+  assert.equal(a.run('LS.get("sites", [])[0]'),"https://site1.example");
+  assert.equal(a.run('LS.get("sites", [])[9]'),"https://site10.example");
+  assert.equal(a.run('LS.get("sites", [])[10]'),"https://site12.example");
+});
+
+test("F6: Save my sites keeps the selected site when it is still in the list",()=>{
+  const a=app();
+  a.run('currentPlan="agency";');
+  a.run('LS.set("sites",["https://a.example","https://b.example","https://c.example"]); LS.set("selectedSite","https://b.example");');
+  a.run("loadSiteSlots()");
+  a.elements.get("siteSaveBtn").listeners.click();
+  assert.equal(a.run('LS.get("selectedSite", "")'),"https://b.example");
+  /* Selected site removed from the list -> falls back to the first site. */
+  a.run('LS.set("sites",["https://a.example","https://c.example"]); LS.set("selectedSite","https://b.example"); loadSiteSlots();');
+  a.elements.get("siteSaveBtn").listeners.click();
+  assert.equal(a.run('LS.get("selectedSite", "")'),"https://a.example");
+});
+
+test("F5: a double click on Health Check saves one audit row, not two",async()=>{
+  const a=app();
+  a.run('fetchPageDoc=async()=>({doc:{querySelector:()=>null,querySelectorAll:()=>[]},status:200,text:"<html></html>",ttfbMs:100,totalMs:100,bytes:100,compressed:true,headers:{encoding:"",cache:""}});');
+  a.run('runPSI=async()=>({score:80,lcp:"1.0 s",cls:"0",seo:[],finalUrl:"https://example.com"});');
+  a.elements.get("hcUrl").value="https://example.com";
+  const p1=a.run("runHealth()");
+  const p2=a.run("runHealth()");
+  await p1; await p2;
+  assert.equal(a.run('LS.get("audits", []).length'),1);
+  assert.equal(a.elements.get("hcBtn").disabled,false);
+});
+
+test("F7: Health Check keeps its result when the save fails, with a warning",async()=>{
+  const a=app();
+  a.run('fetchPageDoc=async()=>({doc:{querySelector:()=>null,querySelectorAll:()=>[]},status:200,text:"<html></html>",ttfbMs:100,totalMs:100,bytes:100,compressed:true,headers:{encoding:"",cache:""}});');
+  a.run('runPSI=async()=>({score:80,lcp:"1.0 s",cls:"0",seo:[],finalUrl:"https://example.com"});');
+  a.run('currentUser={id:"u1",email:"a@example.com"}; S.mode="cloud"; cloudInsertAudit=async()=>{ throw new Error("insert failed"); };');
+  a.elements.get("hcUrl").value="https://example.com";
+  await a.run("runHealth()");
+  const out=a.elements.get("hcOut").innerHTML;
+  assert.match(out,/Mobile performance score 80\/100/);
+  assert.match(out,/saving it failed/);
+  assert.doesNotMatch(out,/Health check failed/);
+});
+
+test("F7: Bulk Audit keeps a scored row when its save fails (never 'Not scored')",async()=>{
+  const a=app();
+  a.run('runPSI=async()=>({score:80,lcp:"1.0 s",cls:"0",seo:[],finalUrl:"https://example.com"});');
+  a.run('currentUser={id:"u1",email:"a@example.com"}; S.mode="cloud"; cloudInsertAudit=async()=>{ throw new Error("insert failed"); };');
+  a.elements.get("bkUrls").value="https://example.com";
+  await a.run("runBulkAudit()");
+  const out=a.elements.get("bkOut").innerHTML;
+  assert.match(out,/80/);
+  assert.match(out,/could not be saved/);
+  assert.doesNotMatch(out,/Not scored/);
+});
+
+test("F9: Disconnect Google from Settings arms the confirm in Settings, not the hidden GSC tab",async()=>{
+  const a=app();
+  await a.run('disconnectGoogle("int")');
+  assert.match(a.elements.get("intDisconnectConfirm").innerHTML,/Disconnect Google\?/);
+  assert.equal(a.elements.get("gscDisconnectConfirm").innerHTML,"");
+  await a.run('disconnectGoogle("gsc")');
+  assert.match(a.elements.get("gscDisconnectConfirm").innerHTML,/Disconnect Google\?/);
+  assert.equal(a.elements.get("intDisconnectConfirm").innerHTML,"");
+});
+
+test("R3: renderLimitNotes never lets the RPC compares value overwrite the client run-count",async()=>{
+  const a=app();
+  a.run('currentUser={id:"u1",email:"a@example.com"}; S.mode="cloud"; cloudDataLoaded=true;');
+  a.run('S.cache.toolChecks=[{date:todayISO(),type:"compare",url:"a vs b"},{date:todayISO(),type:"compare",url:"c vs d"}];');
+  a.run('sb={rpc:async()=>({data:{auditsUsed:0,linksUsed:0,briefsUsed:0,comparesUsed:0,toolChecksUsed:0,keywordsUsed:0},error:null})};');
+  await a.run("renderLimitNotes()");
+  await a.run("Promise.resolve()");
+  assert.equal(a.run("v25Usage().comparesUsed"),2);
+  assert.match(a.run("limitNoteText()"),/1 of 3 competitor compares left/);
+});
+
+test("F3/F4: Cancel aborts only the audit run's requests, never other tools'",async()=>{
+  const a=app();
+  let aborted=false;
+  a.context.fetch=async(url,opts)=>{ const s=opts&&opts.signal; s.addEventListener("abort",()=>{aborted=true;}); return new Promise(()=>{}); };
+  const scope=a.run("new Set()");
+  a.context.__scope=scope;
+  a.run("fetchTimeout('https://example.com/x', 60000, __scope)");
+  assert.equal(a.run("__scope.size"),1);
+  assert.equal(a.run("activeRequests.size"),0);
+  a.run("auditRunScope=__scope; cancelAuditRequests();");
+  assert.equal(aborted,true);
+  assert.equal(a.run("__scope.size"),0);
+  assert.equal(a.run("activeRequests.size"),0);
+  /* A global (unscoped) request from another tool is untouched by the audit cancel. */
+  aborted=false;
+  a.run("fetchTimeout('https://example.com/y', 60000)");
+  assert.equal(a.run("activeRequests.size"),1);
+  a.run("cancelAuditRequests();");
+  assert.equal(aborted,false);
+  a.run("cancelPendingRequests();");
+  assert.equal(aborted,true);
+});
+
+test("F8: a full localStorage on Add to tracker shows an inline error, not silence",async()=>{
+  const a=app();
+  a.context.localStorage.setItem=()=>{throw Error("QuotaExceeded");};
+  a.elements.get("rkKw").value="seo tools";
+  await a.elements.get("rkAddBtn").listeners.click();
+  assert.match(a.elements.get("rkList").innerHTML,/Could not save that keyword/);
+  assert.equal(a.elements.get("rkAddBtn").disabled,false);
+  /* The same catch exists on the other two N5 buttons and the Explorer save. */
+  assert.match(code,/prependNote\("revList", "err", "Could not log that revenue/);
+  assert.match(code,/formErr\("mkErr", "Could not add that listing/);
+  assert.match(code,/b\.textContent = "Save failed — retry"; b\.disabled = false;/);
+});
+
+test("F15: Redirects has one 60 s total cap covering walk + supplement + PageSpeed",()=>{
+  assert.match(code,/const deadline = Date\.now\(\) \+ 60000;/);
+  assert.match(code,/Math\.max\(1000, Math\.min\(12000, deadline - Date\.now\(\)\)\)/);
+  assert.match(code,/if\(!finalUrl && Date\.now\(\) < deadline\)/);
+  assert.match(code,/PageSpeed final-URL check skipped — the 60 s overall limit/);
+  /* The two legs that used to blow the cap are now deadline-clamped: the
+     fetchViaProxy fallback (skipped past the deadline, timeout clamped) and
+     the PageSpeed leg (timeout threaded through runPSI/runPSIDirect). */
+  assert.match(code,/fetchViaProxy\(start, Math\.max\(1000, Math\.min\(15000, deadline - Date\.now\(\)\)\)\)/);
+  assert.match(code,/runPSI\(start, "mobile", undefined, Math\.max\(5000, deadline - Date\.now\(\)\)\)/);
+  assert.match(code,/async function runPSI\(url, strategy, scope, timeoutMs\)/);
+  assert.match(code,/async function runPSIDirect\(url, strategy, key, scope, timeoutMs\)/);
+});
+
+test("R2: the app re-themes on storage events, and a share URL runs at most once per page load",()=>{
+  assert.match(code,/window\.addEventListener\("storage", \(e\) => \{[\s\S]*?if\(e\.key === LS\.key\("preferences"\)\)\{ try\{ loadPreferences\(\); \}catch\(err\)\{\} \}/);
+  assert.match(code,/if\(!shareRuns\.has\(key\)\)\{ shareRuns\.add\(key\); runHealth\(\); \}/);
+  assert.match(code,/shareRuns\.add\("health\|" \+ sharedUrl\); runHealth\(\);/);
 });
