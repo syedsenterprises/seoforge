@@ -154,3 +154,80 @@ html[data-theme=dark] .feature,html[data-theme=dark] .price-card,html[data-theme
   .agent-msg.ai{background:var(--bg);border:1px solid var(--line);align-self:flex-start;max-width:95%}
   .agent-input-row{display:flex;gap:8px}
   .agent-input-row input{flex:1}
+
+/* ================= v2.10.0: sidebar layout, slim header, skeletons ================= */
+/* Slim app header: logo, site switcher, global search, sign-in only. */
+.app-header{display:flex;gap:10px;align-items:center;flex-wrap:wrap;max-width:1180px}
+.logo-btn{background:none;border:0;color:#fff;font-size:20px;font-weight:800;letter-spacing:.2px;cursor:pointer;padding:4px 2px;white-space:nowrap}
+.logo-btn span{color:#2dd4bf}
+.logo-btn [data-app-version]{font-size:12px;color:#94a3b8;font-weight:400}
+#navToggle{display:none;background:transparent;color:#cbd5e1;border:1px solid #475569;border-radius:8px;padding:6px 10px;font-size:16px;cursor:pointer}
+.site-switcher-label{font-size:12px;color:#94a3b8;font-weight:600}
+#siteSwitcher{width:auto;max-width:220px;padding:8px 10px;border:1px solid #334155;border-radius:8px;font-size:14px;background:#1e293b;color:#fff}
+#globalSearchWrap{position:relative;flex:1 1 220px;min-width:160px}
+#globalSearchWrap input{width:100%;padding:8px 10px;border:1px solid #334155;border-radius:8px;font-size:14px;background:#1e293b;color:#fff}
+#globalSearchWrap input::placeholder{color:#94a3b8}
+#globalSearchResults{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:40;background:var(--card);border:1px solid var(--line);border-radius:8px;overflow:hidden;box-shadow:0 8px 24px rgba(15,23,42,.2)}
+#globalSearchResults:empty{display:none}
+.gs-result{display:block;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);padding:10px 12px;font-size:14px;color:var(--ink);cursor:pointer}
+.gs-result:last-child{border-bottom:0}
+.gs-result:hover{background:#f0fdfa}
+html[data-theme=dark] .gs-result:hover{background:#134e4a}
+header #authBar{margin-top:0;flex:0 0 auto}
+.linklike{background:none;border:0;color:var(--teal);font-size:14px;font-weight:600;cursor:pointer;padding:0;text-decoration:underline}
+.ghost-link{color:var(--teal);font-weight:600;font-size:15px;padding:11px 4px;text-decoration:underline}
+/* App shell: sidebar + main. */
+#appShell{display:flex;align-items:flex-start}
+#appShell[hidden]{display:none}
+#sidebar{flex:0 0 224px;position:sticky;top:0;height:100vh;overflow-y:auto;background:var(--card);border-right:1px solid var(--line);padding:10px 8px}
+#sidebar nav{background:none;border:0;position:static;padding:0}
+#sidebarToggle{display:block;width:100%;background:none;border:1px solid var(--line);border-radius:8px;color:var(--muted);cursor:pointer;padding:4px;margin-bottom:8px;font-size:14px}
+.side-group{margin-bottom:10px}
+.side-group-label{display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin:6px 6px 4px}
+#sidebar nav button{display:flex;align-items:center;width:100%;text-align:left;border:1px solid transparent;background:none;color:var(--ink);border-radius:8px;padding:8px 10px;font-size:14px;cursor:pointer;margin:1px 0}
+#sidebar nav button:hover{border-color:var(--teal)}
+#sidebar nav button.active{background:var(--teal);border-color:var(--teal);color:#fff;font-weight:600}
+#sidebar nav button svg{width:16px;height:16px;flex:0 0 16px;margin-right:8px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+#appShell main{flex:1;min-width:0;max-width:880px}
+body.sidebar-collapsed #sidebar{flex-basis:56px}
+body.sidebar-collapsed #sidebarToggle{font-size:12px}
+body.sidebar-collapsed .side-group-label{display:none}
+body.sidebar-collapsed #sidebar nav button{justify-content:center;padding:8px 4px}
+body.sidebar-collapsed #sidebar nav button svg{margin-right:0}
+body.sidebar-collapsed #sidebar nav button{font-size:0}
+body.sidebar-collapsed #sidebar nav button svg{width:18px;height:18px;flex-basis:18px}
+/* Bottom tab bar: phones only. */
+#bottomNav{display:none}
+/* Skeleton loading rows. */
+.skel{margin:10px 0}
+.skel i{display:block;height:14px;margin:8px 0;border-radius:6px;background:#e5e7eb;animation:skelpulse 1.2s ease-in-out infinite}
+html[data-theme=dark] .skel i{background:#334155}
+@keyframes skelpulse{0%,100%{opacity:.45}50%{opacity:1}}
+/* Compare table: label column never crushes; scrolls inside the card. */
+#cpOut table td:first-child,#cpOut table th:first-child{min-width:140px;white-space:nowrap}
+/* Tooltip "?" marks on metrics. */
+.tip{display:inline-block;width:16px;height:16px;line-height:16px;text-align:center;border-radius:50%;background:var(--line);color:var(--muted);font-size:11px;font-weight:700;cursor:help;vertical-align:middle;margin-left:4px}
+/* Tablet: sidebar becomes a drawer. */
+@media (max-width:900px){
+  #sidebar{position:fixed;left:0;top:0;bottom:0;z-index:60;transform:translateX(-105%);transition:transform .2s ease;box-shadow:0 0 40px rgba(15,23,42,.3)}
+  body.nav-open #sidebar{transform:translateX(0)}
+  #navToggle{display:block}
+  body.sidebar-collapsed #sidebar{flex-basis:224px}
+  body.sidebar-collapsed #sidebar nav button{font-size:14px;justify-content:flex-start;padding:8px 10px}
+  body.sidebar-collapsed #sidebar nav button svg{margin-right:8px}
+  body.sidebar-collapsed .side-group-label{display:block}
+  #sidebarToggle{display:none}
+  #appShell main{max-width:920px}
+}
+/* Phones: drawer + bottom tab bar; CTAs stack full-width. */
+@media (max-width:560px){
+  #bottomNav{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:55;background:var(--card);border-top:1px solid var(--line);padding:6px 4px calc(6px + env(safe-area-inset-bottom));gap:4px}
+  #bottomNav button{flex:1;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:9px 2px;font-size:12px;cursor:pointer}
+  #bottomNav button.active{background:var(--teal);border-color:var(--teal);color:#fff;font-weight:600}
+  body{padding-bottom:56px}
+  #globalSearchWrap{flex-basis:100%;order:5}
+  .hero .cta{flex-direction:column;align-items:stretch}
+  .hero .cta .btn,.hero .cta .ghost-link{text-align:center}
+  #cpOut table td:first-child,#cpOut table th:first-child{min-width:120px}
+}
+html[data-theme=dark] #sidebar,html[data-theme=dark] #bottomNav,html[data-theme=dark] #bottomNav button{background:var(--card);color:var(--ink)}
