@@ -396,7 +396,7 @@ async function fetchViaProxy(url, timeoutMs){
   try{
     const res = await fetchJsonTimeout(SUPABASE_URL+"/functions/v1/fetch-proxy", timeoutMs||15000, {method:"POST",headers:{"Content-Type":"application/json",apikey:SUPABASE_PUBLISHABLE_KEY,Authorization:"Bearer "+SUPABASE_PUBLISHABLE_KEY},body:JSON.stringify({url})});
     const data = await res.json().catch(()=>({}));
-    if(res.ok && typeof data.text === "string") return {status:data.status||200, ok:!!data.ok, text:data.text, ttfbMs:data.ttfbMs, totalMs:data.totalMs, bytes:data.bytes, headers:data.headers||null};
+    if(res.ok && typeof data.text === "string") return {status:data.status||200, ok:!!data.ok, text:data.text, ttfbMs:data.ttfbMs, totalMs:data.totalMs, bytes:data.bytes, compressed:data.compressed, headers:data.headers||null};
     lastErr = new Error(data.error||("Proxy error (HTTP "+res.status+")"));
   }catch(e){ lastErr = e; }
   for(const p of PROXIES){
@@ -911,11 +911,139 @@ $("revAddBtn").addEventListener("click", async () => {
 function loadSettings(){
   const s = LS.get("settings", {});
   $("setPsi").value = s.psiKey||"";
+  $("setAiProvider").value = s.aiProvider||"coarena";
+  $("setAiKey").value = s.aiKey||"";
+  $("setAiBaseUrl").value = s.aiBaseUrl||"";
+  $("setAiModel").value = s.aiModel||"";
+  agentProviderHint();
 }
 $("setSaveBtn").addEventListener("click", () => {
-  LS.set("settings", { psiKey:$("setPsi").value.trim() });
+  LS.set("settings", { psiKey:$("setPsi").value.trim(), aiProvider:$("setAiProvider").value, aiKey:$("setAiKey").value.trim(), aiBaseUrl:$("setAiBaseUrl").value.trim(), aiModel:$("setAiModel").value.trim() });
   $("setSaved").textContent = "Saved in this browser.";
   setTimeout(() => { $("setSaved").textContent = ""; }, 3000);
+});
+
+/* ---------- Forge Assistant (in-site AI agent) ---------- */
+/* Runs on the user's OWN key (BYOK): CoArena, Google Gemini free tier, or any
+   OpenAI-compatible provider. The key lives only in this browser's localStorage
+   and is sent to our ai-agent edge function per request — never stored
+   server-side, and there is no site-wide key for anyone to burn through.
+   Free plan: 5 messages a day (enforced in this browser); Pro: unlimited. */
+const AGENT_FREE_PER_DAY = 5;
+function agentSettings(){
+  const s = LS.get("settings", {});
+  return { provider:s.aiProvider||"coarena", key:(s.aiKey||"").trim(), baseUrl:(s.aiBaseUrl||"").trim(), model:(s.aiModel||"").trim() };
+}
+function agentEndpoint(provider, baseUrl){
+  if(provider==="gemini") return "https://generativelanguage.googleapis.com/v1beta/openai";
+  if(provider==="openai") return (baseUrl||"https://api.openai.com/v1").replace(/\/+$/,"");
+  return (baseUrl||"").replace(/\/+$/,"");
+}
+function agentModel(provider, model){
+  if(model) return model;
+  if(provider==="gemini") return "gemini-2.0-flash";
+  if(provider==="openai") return "gpt-4o-mini";
+  return "";
+}
+function agentProviderHint(){
+  const p = $("setAiProvider").value;
+  if(p==="gemini"){
+    $("setAiHint").textContent = "Free tier: get a key at Google AI Studio (aistudio.google.com). Base URL and model are filled in for you — only the key is needed.";
+    if(!$("setAiBaseUrl").value) $("setAiBaseUrl").value = "https://generativelanguage.googleapis.com/v1beta/openai";
+    if(!$("setAiModel").value) $("setAiModel").value = "gemini-2.0-flash";
+  }else if(p==="openai"){
+    $("setAiHint").textContent = "Any OpenAI-compatible provider — paste its base URL, your key and the model name.";
+  }else{
+    $("setAiHint").textContent = "CoArena: paste the base URL + key from your CoArena page, and the model name.";
+  }
+}
+$("setAiProvider").addEventListener("change", agentProviderHint);
+function agentUsageToday(){
+  const d = LS.get("agentUsage", {});
+  const today = todayISO();
+  if(d.date!==today) return {date:today, used:0};
+  return d;
+}
+function agentCanChat(){
+  if(currentPlan==="pro") return {ok:true, left:null};
+  const u = agentUsageToday();
+  return u.used < AGENT_FREE_PER_DAY ? {ok:true, left:AGENT_FREE_PER_DAY-u.used} : {ok:false, left:0};
+}
+function agentBumpUsage(){
+  if(currentPlan==="pro") return;
+  const u = agentUsageToday();
+  LS.set("agentUsage", {date:u.date, used:u.used+1});
+}
+function agentContext(){
+  const audits = S.get("audits", []);
+  const last = audits[0];
+  const kws = S.get("keywords", []).length;
+  const ranks = S.get("rankChecks", []).length;
+  const links = S.get("links", []).length;
+  const bits = [];
+  if(last) bits.push("latest site audit: " + (last.url||"") + " — PageSpeed " + (last.psi==null?"unknown":last.psi+"/100") + (last.ok==null?"":", "+last.ok+" of "+last.total+" URLs reachable"));
+  bits.push(kws + " keywords tracked, " + ranks + " rank checks, " + links + " verified links");
+  bits.push("plan: " + (currentPlan||"free"));
+  return "You are the Forge Assistant inside SEOForge, a free SEO toolkit. The user's saved data: " + bits.join("; ") + ". Answer SEO questions about their data and how to improve it. Never invent numbers — only use the data given here, or say you do not know.";
+}
+let agentHistory = [];
+function agentRender(){
+  const box = $("agentMsgs");
+  const limit = agentCanChat();
+  $("agentLimit").textContent = currentPlan==="pro" ? "Pro — unlimited" : (limit.left + " of " + AGENT_FREE_PER_DAY + " free messages left today");
+  box.innerHTML = agentHistory.length ? agentHistory.map(m => '<div class="agent-msg ' + (m.role==="user"?"user":"ai") + '">' + esc(m.content) + '</div>').join("") : '<p class="muted">Ask about your audit results, keywords, or any SEO question. I answer from your saved data — I never invent numbers.</p>';
+  box.scrollTop = box.scrollHeight;
+}
+async function agentAsk(messages){
+  const s = agentSettings();
+  const res = await fetchJsonTimeout(SUPABASE_URL+"/functions/v1/ai-agent", 30000, {method:"POST", headers:{"Content-Type":"application/json", apikey:SUPABASE_PUBLISHABLE_KEY, Authorization:"Bearer "+SUPABASE_PUBLISHABLE_KEY}, body:JSON.stringify({apiKey:s.key, baseUrl:agentEndpoint(s.provider, s.baseUrl), model:agentModel(s.provider, s.model), messages})});
+  const data = await res.json().catch(()=>({}));
+  if(!res.ok) throw new Error(data.error||("AI agent error (HTTP "+res.status+")"));
+  return data.reply||"";
+}
+async function agentSend(){
+  const input = $("agentInput");
+  const text = (input.value||"").trim();
+  if(!text) return;
+  const s = agentSettings();
+  if(!s.key){
+    agentHistory.push({role:"assistant", content:"Add your AI key in Settings first — the assistant runs on your own key, so it costs the site nothing. CoArena works, or a free Gemini key from Google AI Studio."});
+    agentRender(); return;
+  }
+  const limit = agentCanChat();
+  if(!limit.ok){
+    agentHistory.push({role:"assistant", content:"Free plan: 5 assistant messages a day, and today\u2019s are used up. Upgrade to Pro ($9/month) for unlimited, or come back tomorrow."});
+    agentRender(); return;
+  }
+  agentHistory.push({role:"user", content:text});
+  input.value = ""; agentRender();
+  $("agentSendBtn").disabled = true; $("agentProg").textContent = "Thinking…";
+  try{
+    const reply = await agentAsk([{role:"system", content:agentContext()}].concat(agentHistory.slice(-8)));
+    agentHistory.push({role:"assistant", content:reply});
+    agentBumpUsage();
+  }catch(e){
+    agentHistory.push({role:"assistant", content:"Could not answer — " + (e.message||e)});
+  }
+  $("agentSendBtn").disabled = false; $("agentProg").textContent = "";
+  agentRender();
+}
+$("agentBtn").addEventListener("click", () => {
+  const p = $("agentPanel");
+  p.hidden = !p.hidden;
+  if(!p.hidden){ agentRender(); $("agentInput").focus(); }
+});
+$("agentCloseBtn").addEventListener("click", () => { $("agentPanel").hidden = true; });
+$("agentSendBtn").addEventListener("click", agentSend);
+$("agentInput").addEventListener("keydown", e => { if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); agentSend(); } });
+$("setAiTestBtn").addEventListener("click", async () => {
+  const s = agentSettings();
+  $("setAiTest").textContent = "Testing…";
+  if(!s.key){ $("setAiTest").textContent = "Add your key first."; return; }
+  try{
+    const reply = await agentAsk([{role:"user", content:"Reply with one short sentence saying hello."}]);
+    $("setAiTest").textContent = "Working — the assistant replied: " + reply.slice(0,120);
+  }catch(e){ $("setAiTest").textContent = "Failed — " + (e.message||e); }
 });
 
 /* ---------- Marketplace ---------- */
@@ -1385,7 +1513,7 @@ async function fetchPageDoc(url, timeoutMs){
   const r = await fetchViaProxy(url, timeoutMs||20000);
   if(!r.status || r.status < 200 || r.status >= 300) throw new Error("Page fetch failed (HTTP " + (r.status||"proxy error") + "). Check the URL and retry.");
   const doc = new DOMParser().parseFromString(r.text, "text/html");
-  return { doc, status:r.status, text:r.text, ttfbMs:r.ttfbMs, totalMs:r.totalMs, bytes:r.bytes, headers:r.headers||null };
+  return { doc, status:r.status, text:r.text, ttfbMs:r.ttfbMs, totalMs:r.totalMs, bytes:r.bytes, compressed:r.compressed, headers:r.headers||null };
 }
 function pageWordCount(doc){
   const body = doc.body; if(!body) return 0;
@@ -1955,6 +2083,7 @@ function extractSpeedMetrics(doc, text, timings){
     bytes: (timings&&timings.bytes!=null)?timings.bytes:null,
     textBytes: new TextEncoder().encode(text||"").length,
     blocking: headScripts.length + headStyles.length,
+    compressed: (timings&&timings.compressed!==undefined)?timings.compressed:null,
     encoding: (timings&&timings.headers&&timings.headers.encoding)||"",
     cache: (timings&&timings.headers&&timings.headers.cache)||"",
     imgs: imgs.length, sized: sized.length, raster: raster.length, modern: modern.length,
@@ -1984,8 +2113,10 @@ function scoreSpeedMetrics(m){
   else if(b<=10){ add("Render-blocking resources", 5, 20, b + " blocking — the browser waits on these before showing anything."); }
   else { add("Render-blocking resources", 0, 20, b + " blocking — the browser waits on these before showing anything."); }
   const enc = (m.encoding||"").toLowerCase();
-  if(/gzip|br|deflate|zstd/.test(enc)){ add("Compression", 8, 8, "Served compressed (" + enc.split(",")[0].trim() + ")."); }
-  else { add("Compression", 0, 8, "No compression header seen — enable gzip or Brotli to shrink the page."); }
+  if(m.compressed===true){ add("Compression", 8, 8, "Compressed in transfer — the server shrinks the page before sending it."); }
+  else if(m.compressed===false){ add("Compression", 0, 8, "No compression — enable gzip or Brotli to shrink the page."); }
+  else if(/gzip|br|deflate|zstd/.test(enc)){ add("Compression", 8, 8, "Served compressed (" + enc.split(",")[0].trim() + ")."); }
+  else { add("Compression", 4, 8, "Compression could not be verified — the server sent no content length to compare."); }
   const cache = m.cache||"";
   const mm = /max-age\s*=\s*(\d+)/i.exec(cache);
   if(/immutable/i.test(cache) || (mm && +mm[1] >= 86400)){ add("Caching", 7, 7, "Long cache lifetime set."); }
