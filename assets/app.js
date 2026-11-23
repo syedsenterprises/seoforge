@@ -261,6 +261,12 @@ async function doSignUp(){
   if(data.session && data.session.user){
     showAuthMsg("Account created — welcome!");
     await afterSignIn(data.session.user);
+  }else if(data.user && data.user.identities && data.user.identities.length === 0){
+    /* Supabase never says outright that an email is already registered — it
+       returns a success with an empty identities list and no session. The app
+       has to spot that and say so plainly, instead of the misleading
+       "Account created — check your inbox" message. */
+    showAuthMsg("An account with this email already exists — try signing in instead.");
   }else{
     showAuthMsg("Account created — check your inbox for the confirmation email, then sign in.");
   }
@@ -271,8 +277,17 @@ async function doSignIn(){
   const pass = $("authPass").value||"";
   if(!email || !pass){ showAuthMsg("Enter your email and password."); return; }
   showAuthMsg("Signing in…");
+  $("resendBtn").hidden = true;
   const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
-  if(error){ showAuthMsg("Sign-in failed: " + error.message); return; }
+  if(error){
+    if(/not confirmed/i.test(error.message||"")){
+      showAuthMsg("Your email isn't confirmed yet — check your inbox for the confirmation email, or tap Resend confirmation below.");
+      $("resendBtn").hidden = false;
+    }else{
+      showAuthMsg("Sign-in failed: " + error.message);
+    }
+    return;
+  }
   showAuthMsg("");
   if(data.user) await afterSignIn(data.user);
 }
@@ -295,6 +310,23 @@ async function doSignOut(){
 
 $("signUpBtn").addEventListener("click", doSignUp);
 $("signInBtn").addEventListener("click", doSignIn);
+async function doResendConfirmation(){
+  if(!cloudAvailable){ showAuthMsg("Sign-in is unavailable right now (the Supabase library failed to load)."); return; }
+  const email = ($("authEmail").value||"").trim();
+  if(!email){ showAuthMsg("Enter your email above first, then tap Resend confirmation."); return; }
+  showAuthMsg("Sending confirmation email…");
+  const { error } = await sb.auth.resend({ type:"signup", email });
+  if(error){ showAuthMsg("Could not resend: " + error.message); return; }
+  showAuthMsg("Confirmation email sent — check your inbox (and spam folder).");
+}
+$("resendBtn").addEventListener("click", doResendConfirmation);
+async function doGoogleSignIn(){
+  if(!cloudAvailable){ showAuthMsg("Sign-in is unavailable right now (the Supabase library failed to load)."); return; }
+  showAuthMsg("Opening Google sign-in…");
+  const { error } = await sb.auth.signInWithOAuth({ provider:"google", options:{ redirectTo: location.origin + location.pathname } });
+  if(error) showAuthMsg("Google sign-in failed: " + error.message);
+}
+$("googleSignInBtn").addEventListener("click", doGoogleSignIn);
 $("signOutBtn").addEventListener("click", doSignOut);
 $("authPass").addEventListener("keydown", e => { if(e.key === "Enter") doSignIn(); });
 async function initAuth(){
