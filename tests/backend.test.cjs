@@ -47,3 +47,40 @@ test("New Supabase secret keys do not inherit legacy bearer headers",async()=>{
   assert.equal(headers.apikey,"sb_secret_test");
   assert.equal(headers.Authorization,undefined);
 });
+
+test("Admin stats: owner JWT gets counts, non-owner gets 403, missing JWT gets 401",async()=>{
+  const fetchMock=async(url,options)=>{
+    const auth=(options&&options.headers&&options.headers.Authorization)||"";
+    if(String(url).includes("/auth/v1/user")){
+      if(auth==="Bearer owner-token") return {ok:true,json:async()=>({id:"owner-id",email:"syedsinterprises@gmail.com"})};
+      if(auth==="Bearer other-token") return {ok:true,json:async()=>({id:"other-id",email:"someone@example.com"})};
+      return {ok:false,status:401,json:async()=>({})};
+    }
+    if(String(url).includes("/rest/v1/profiles")){
+      const total=String(url).includes("plan=eq.pro")?"0-0/3":String(url).includes("created_at=gte")?"0-0/5":"0-0/42";
+      return {ok:true,headers:{get:n=>n.toLowerCase()==="content-range"?total:null}};
+    }
+    if(String(url).includes("/rest/v1/audits")) return {ok:true,headers:{get:n=>n.toLowerCase()==="content-range"?"0-0/17":null}};
+    if(String(url).includes("/rest/v1/billing_subscriptions")) return {ok:true,json:async()=>([{subscription_id:"I-ABC",status:"ACTIVE"}])};
+    throw Error("unexpected fetch "+url);
+  };
+  let handler;
+  const ctx=vm.createContext({Deno:{env:{get:n=>({APP_ORIGINS:"https://example.com",SUPABASE_URL:"https://db.example",SUPABASE_SERVICE_ROLE_KEY:"test-service-key",PAYPAL_PLAN_ID:"P-TEST"})[n]},serve:fn=>{handler=fn;}},Response,JSON,AbortSignal,fetch:fetchMock,URL,Date});
+  vm.runInContext(source("supabase/functions/_shared/http.js"),ctx);
+  vm.runInContext(source("supabase/functions/admin-stats/index.ts"),ctx);
+  const req=(token)=>new Request("https://db.example/functions/admin-stats",{method:"POST",headers:{origin:"https://example.com",...(token?{authorization:"Bearer "+token}:{})},body:"{}"});
+  const owner=await handler(req("owner-token"));
+  assert.equal(owner.status,200);
+  const data=await owner.json();
+  assert.equal(data.totalUsers,42);
+  assert.equal(data.proUsers,3);
+  assert.equal(data.signups7d,5);
+  assert.equal(data.auditsThisMonth,17);
+  assert.equal(data.paypalPlanId,"P-TEST");
+  assert.equal(data.subscription.status,"ACTIVE");
+  assert.equal(data.subscription.id,"I-ABC");
+  const other=await handler(req("other-token"));
+  assert.equal(other.status,403);
+  const anon=await handler(req(null));
+  assert.equal(anon.status,401);
+});
