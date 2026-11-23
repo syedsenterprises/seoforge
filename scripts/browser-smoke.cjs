@@ -62,12 +62,16 @@ function contrastRatio(fg,bg){
         console.log("SMOKE-ABORTED["+viewport.width+"]:",url);
         return route.abort();
       });
-      /* 1. Landing: hero + three paths, dark theme pre-applied, no app.js. */
+      /* 1. Landing: hero + three paths, light theme by default (no app.js).
+         The context is dark-OS, so this also proves the default is light
+         even when the OS is dark — a new visitor never gets a dark first
+         paint. */
       await page.goto(base,{waitUntil:"networkidle"});
+      assert.equal(await page.locator("html").getAttribute("data-theme"),null,"no dark theme without a stored pick");
       assert.match(await page.locator("body").innerText(),/Create free account/);
       assert.match(await page.locator("body").innerText(),/Continue without an account/);
-      assert.equal(await page.locator(".feature").first().evaluate(el=>getComputedStyle(el).backgroundColor),"rgb(30, 41, 59)");
-      assert.equal(await page.locator(".price-card").first().evaluate(el=>getComputedStyle(el).backgroundColor),"rgb(30, 41, 59)");
+      assert.equal(await page.locator(".feature").first().evaluate(el=>getComputedStyle(el).backgroundColor),"rgb(255, 255, 255)");
+      assert.equal(await page.locator(".price-card").first().evaluate(el=>getComputedStyle(el).backgroundColor),"rgb(255, 255, 255)");
       assert.ok(!(await page.content()).includes("assets/app.js"),"landing must not load app.js");
       /* 1b. Landing (v2.11.0): the three paths are real buttons, the showcase
          tabs swap, the try-it box answers, the pricing toggle swaps prices,
@@ -76,11 +80,11 @@ function contrastRatio(fg,bg){
       assert.ok(await page.locator(".landing-header img").isVisible());
       /* 1a2. Header nav is legible: the header is an accent tint in both
          themes (never a hardcoded dark block), and its text is the theme
-         ink — dark theme ink is near-white, so the nav colour is unchanged
-         from before, but the background is the teal tint, not #0f172a. */
+         ink — light theme ink is the dark slate, so the nav colour is the
+         light-theme value, not the dark-theme near-white. */
       const landingHeaderBg=await page.locator(".landing-header").evaluate(el=>getComputedStyle(el).backgroundColor);
       assert.notEqual(landingHeaderBg,"rgb(15, 23, 42)","landing header must be an accent tint, not a hardcoded dark block");
-      assert.equal(await page.locator(".landing-nav a").first().evaluate(el=>getComputedStyle(el).color),"rgb(226, 232, 240)");
+      assert.equal(await page.locator(".landing-nav a").first().evaluate(el=>getComputedStyle(el).color),"rgb(31, 41, 55)");
       assert.ok(contrastRatio(await page.locator(".landing-nav a").first().evaluate(el=>getComputedStyle(el).color),landingHeaderBg)>=4.5,"header nav contrast "+landingHeaderBg);
       /* 1a4. Mobile header: hamburger at 390px, inline nav at 1440px. */
       if(viewport.width<768){
@@ -129,6 +133,35 @@ function contrastRatio(fg,bg){
       await page.locator("#heroAuditBtn").click();
       assert.match(await page.locator("#heroAuditOut").innerText(),/Enter a site URL first/);
       assert.equal(await page.locator("#pricing .price-card").count(),4);
+      /* 1b3. Auth view: one mode at a time. Signup shows the Create heading
+         with exactly one primary button (Create), no Sign in button and no
+         Reset password; the mode-switch link flips to sign-in, which shows
+         the Sign in heading with exactly one primary button (Sign in) plus
+         Reset password. Google + the guest text link are present in both
+         modes; the app header is minimal while the card is up. */
+      await page.goto(base+"/app.html#auth=signup",{waitUntil:"networkidle"});
+      assert.ok(await page.locator("#authView").isVisible(),"auth view shows for #auth=signup");
+      assert.equal(await page.locator("#authViewTitle").innerText(),"Create your free account");
+      assert.ok(await page.locator("#signUpBtn").isVisible(),"signup primary visible");
+      assert.ok(await page.locator("#signInBtn").isHidden(),"no Sign in button in signup mode");
+      assert.ok(await page.locator("#forgotPassword").isHidden(),"no Reset password in signup mode");
+      assert.ok(await page.locator("#googleSignInBtn").isVisible(),"Google button present in signup mode");
+      assert.ok(await page.locator("#authGuestLink").isVisible(),"guest text link present in signup mode");
+      assert.equal(await page.locator("#authModeSwitch").innerText(),"Already have an account? Sign in");
+      assert.ok(await page.locator("#siteSwitcher").isHidden(),"minimal header on the auth view: no site switcher");
+      assert.ok(await page.locator("#globalSearchWrap").isHidden(),"minimal header on the auth view: no search");
+      assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),"no horizontal overflow on the signup view at "+viewport.width+"px");
+      await page.screenshot({path:"test-results/auth-signup-"+viewport.width+".png"});
+      await page.locator("#authModeSwitch").click();
+      await page.waitForFunction(()=>document.querySelector("#authViewTitle").innerText==="Sign in to SEOForge",null,{timeout:5000});
+      assert.ok(await page.locator("#signInBtn").isVisible(),"signin primary visible after the mode switch");
+      assert.ok(await page.locator("#signUpBtn").isHidden(),"no Create button in signin mode");
+      assert.ok(await page.locator("#forgotPassword").isVisible(),"Reset password shows in signin mode");
+      assert.ok(await page.locator("#googleSignInBtn").isVisible(),"Google button present in signin mode");
+      assert.ok(await page.locator("#authGuestLink").isVisible(),"guest text link present in signin mode");
+      assert.equal(await page.locator("#authModeSwitch").innerText(),"No account yet? Create a free account");
+      assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),"no horizontal overflow on the signin view at "+viewport.width+"px");
+      await page.screenshot({path:"test-results/auth-signin-"+viewport.width+".png"});
       /* 1c. Share deep link: the Health Check opens with the URL prefilled. */
       await page.goto(base+"/app.html#tab=health&url=https%3A%2F%2Fexample.com",{waitUntil:"networkidle"});
       assert.ok(await page.locator("#tab-health").isVisible());
@@ -343,7 +376,7 @@ function contrastRatio(fg,bg){
       }
       /* Leave the stored accent at the default so later steps (and the
          screenshots) see the standard theme. */
-      await page.evaluate(()=>{ localStorage.setItem("syedSuite.preferences",JSON.stringify({theme:"dark",accent:"#0f766e",density:"compact",brand:"SEOForge release test",defaultSite:"https://example.com",strategy:"mobile"})); });
+      await page.evaluate(()=>{ localStorage.setItem("syedSuite.preferences",JSON.stringify({theme:"light",accent:"#0f766e",density:"compact",brand:"SEOForge release test",defaultSite:"https://example.com",strategy:"mobile"})); });
       /* Console errors: only stub-induced failed-resource noise is excused. */
       const realConsoleErrors=consoleErrors.filter(t=>!/Failed to load resource|net::ERR_ABORTED|ERR_FAILED|ERR_INTERNET_DISCONNECTED/.test(t));
       if(consoleErrors.length) console.log("console errors at "+viewport.width+"px (raw):",JSON.stringify(consoleErrors));
