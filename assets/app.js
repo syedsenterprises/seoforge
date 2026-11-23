@@ -7,18 +7,22 @@ const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_r61BK1KPrPVwF6O2AncpnA_vlg_xx6N
 const PAYPAL_SUBSCRIBE_URL = "";
 
 const PLAN_LIMITS = { auditsPerMonth: 5, keywordsTotal: 10, linkChecksPerMonth: 5, briefsPerMonth: 3, comparesPerMonth: 3, toolChecksPerMonth: 10 };
+/* Single version source — the header + footer labels are filled from here at load.
+   package.json and supabase/functions/status/index.ts must carry the same value
+   (enforced by tests/app.test.cjs). */
+const APP_VERSION = "2.10.0";
 
 /* ================= v2.6 integrations ================= */
-/* Google OAuth (Search Console + Analytics, read-only). The real client ID is
-   being created in Google Cloud Console — paste it below when it exists.
+/* Google OAuth (Search Console + Analytics, read-only).
    This EXACT redirect URI must be registered in the OAuth client:
-   https://seoforge.syedsenterprises.org/
+   https://seoforge.syedsenterprises.org/app.html
+   (the app lives at /app.html since v2.10.0; the landing page is /).
    Scopes: webmasters.readonly + analytics.readonly. The app runs in Google
    test mode (up to 100 users) until OAuth verification — see README.
    The client SECRET is never in this file: it lives as a Supabase secret for
    the google-oauth edge function (see functions/google-oauth/). */
 const GOOGLE_CLIENT_ID = "158848063786-cmdknljpjj6po7j2uc4r26dp31qm4nek.apps.googleusercontent.com"; /* Google Cloud OAuth client — project "SEOForge" (seoforge-515414), live 21 Nov 2026 */
-const GOOGLE_REDIRECT_URI = "https://seoforge.syedsenterprises.org/";
+const GOOGLE_REDIRECT_URI = "https://seoforge.syedsenterprises.org/app.html";
 const GOOGLE_SCOPES = "https://www.googleapis.com/auth/webmasters.readonly https://www.googleapis.com/auth/analytics.readonly";
 const GOOGLE_OAUTH_FN = SUPABASE_URL + "/functions/v1/google-oauth";
 const ALERT_FN = SUPABASE_URL + "/functions/v1/send-alert";
@@ -62,9 +66,60 @@ let currentPlan = 'free'; /* 'free' | 'pro' */
 let cloudUsage = null, usageLoading = false;
 let cloudUserId = null;   /* guards against double-loading on auth events */
 
-/* ---------- views ---------- */
-function showLanding(){ $("landingView").hidden = false; $("appView").hidden = true; }
-function showApp(){ $("landingView").hidden = true; $("appView").hidden = false; }
+/* ---------- views (app.html is the app; the landing page lives at /) ---------- */
+/* Home goes back to the landing page. The app itself is always visible here —
+   there is no in-page landing view any more (v2.10.0 split). */
+function showLanding(){ location.href = "./"; }
+/* Guest mode: "Continue without an account" from the landing page or the auth
+   card. The flag lives in plain localStorage (not the per-user store) so a
+   guest reload stays in the app instead of dropping back to the sign-in card.
+   Signing in clears it (afterSignIn); signing out leaves via the landing page. */
+const GUEST_KEY = "syedSuite.guest";
+function isGuestMode(){
+  try{ if(localStorage.getItem(GUEST_KEY)==="1") return true; }catch(e){}
+  return /#guest\b/.test(location.hash||"");
+}
+function enterGuestMode(){
+  try{ localStorage.setItem(GUEST_KEY, "1"); }catch(e){}
+  showApp();
+}
+/* A saved Supabase session token in localStorage (the same key the Supabase JS
+   client uses). The inline gate in app.html and initAppFromUrl() read this
+   BEFORE initAuth() finishes, so a signed-in user returning from PayPal (or
+   any reload) sees the app immediately and never flashes the auth view. An
+   expired or missing token means "signed out" — the auth view shows instead,
+   with no spinner and no stuck state. */
+function hasSavedSession(){
+  try{
+    const raw = localStorage.getItem("sb-mzbesucdnjecinkdawzy-auth-token");
+    if(!raw) return false;
+    const s = JSON.parse(raw);
+    return !!(s && s.access_token && (!s.expires_at || s.expires_at*1000 > Date.now()));
+  }catch(e){ return false; }
+}
+function showApp(){
+  const v = $("authView"); if(v) v.hidden = true;
+  const s = $("appShell"); if(s) s.hidden = false;
+}
+/* Show the sign-in / create-account card. mode is "signin" or "signup" — it only
+   changes the heading; the form handles both. The app shell hides while the
+   auth card is up, so a logged-out reload shows the sign-in path, not a
+   half-rendered dashboard. */
+function showAuthView(mode){
+  const s = $("appShell"); if(s) s.hidden = true;
+  const v = $("authView");
+  if(v){
+    v.hidden = false;
+    const t = $("authViewTitle");
+    if(t) t.textContent = mode === "signup" ? "Create your free account" : "Sign in to SEOForge";
+  }
+  window.scrollTo({top:0});
+}
+/* Header + footer version labels read the version from ONE place (APP_VERSION).
+   app.html carries <span data-app-version></span> in both spots. */
+function applyVersionLabels(){
+  document.querySelectorAll("[data-app-version]").forEach(el => { el.textContent = "v" + APP_VERSION; });
+}
 function showBanner(msg, kind){
   const b = $("topBanner");
   b.textContent = msg;
@@ -73,23 +128,45 @@ function showBanner(msg, kind){
 }
 $("topBanner").addEventListener("click", () => { $("topBanner").hidden = true; });
 $("homeBtn").addEventListener("click", showLanding);
-$("landingLaunchBtn").addEventListener("click", showApp);
-function focusAuth(){ window.scrollTo({top:0}); $("authEmail").focus(); }
-$("landingSignupBtn").addEventListener("click", focusAuth);
-$("pricingFreeBtn").addEventListener("click", focusAuth);
+function focusAuth(){ showAuthView("signin"); const el = $("authEmail"); if(el) el.focus(); }
 function showAuthMsg(msg){ $("authMsg").textContent = msg; }
 
 /* ---------- tabs ---------- */
-document.querySelectorAll("#tabs button[data-tab]").forEach(b => b.addEventListener("click", () => showTab(b.dataset.tab)));
-document.querySelectorAll("[data-goto]").forEach(b => b.addEventListener("click", () => showTab(b.dataset.goto)));
-function showTab(name){
-  document.querySelectorAll("#tabs button[data-tab]").forEach(b => b.classList.toggle("active", b.dataset.tab===name));
+const VALID_TABS = ["dashboard","audit","health","bulk","keywords","rank","compete","links","broken","redirect","brief","serp","schema","robots","gsc","ads","market","estimator","preferences"];
+/* Deep links: #tab=rank opens the Rank Tracker, etc. Returns "" for anything else. */
+function parseTabHash(hash){
+  const m = String(hash||"").match(/#tab=([a-z]+)/);
+  return m && VALID_TABS.includes(m[1]) ? m[1] : "";
+}
+/* Parse an auth intent from the hash, e.g. #auth=signup from the landing page. */
+function parseAuthHash(hash){
+  const m = String(hash||"").match(/#auth=(signin|signup)/);
+  return m ? m[1] : "";
+}
+document.querySelectorAll("button[data-tab]").forEach(b => b.addEventListener("click", () => showTab(b.dataset.tab, true)));
+document.querySelectorAll("[data-goto]").forEach(b => b.addEventListener("click", () => showTab(b.dataset.goto, true)));
+/* Back/forward across tabs: a user tab click pushState()s a history entry, so
+   the back button walks back through tabs; programmatic switches (init,
+   deep links, hashchange) replaceState() instead, so they never add entries. */
+if(typeof window.addEventListener === "function"){
+  window.addEventListener("hashchange", () => {
+    const t = parseTabHash(location.hash);
+    if(t) showTab(t);
+    const a = parseAuthHash(location.hash);
+    if(a) showAuthView(a);
+    else if(/#guest\b/.test(location.hash||"")) showApp();
+  });
+}
+function showTab(name, push){
+  document.querySelectorAll("button[data-tab]").forEach(b => b.classList.toggle("active", b.dataset.tab===name));
   document.querySelectorAll("section.tab").forEach(s => s.classList.toggle("active", s.id==="tab-"+name));
+  try{ if(push && history.pushState) history.pushState(null, "", "#tab=" + name); else history.replaceState(null, "", "#tab=" + name); }catch(e){}
   if(name==="dashboard"){ renderDashboard(); renderPlanCard(); }
   if(name==="audit"){ renderAuditHistory(); renderLimitNotes(); }
   if(name==="rank"){ renderRankList(); renderLimitNotes(); }
   if(name==="links"){ renderLinkHistory(); renderLimitNotes(); }
-  if(name==="ads"){ renderRevenue(); loadSettings(); }
+  if(name==="ads"){ renderRevenue(); }
+  if(name==="preferences"){ loadSettings(); renderLimitNotes(); }
   if(name==="market") renderMarket();
   if(name==="gsc"){ renderGoogleStatus(); }
   if(name==="brief"){ renderBriefs(); renderLimitNotes(); }
@@ -97,6 +174,40 @@ function showTab(name){
   if(name==="serp" || name==="broken" || name==="redirect" || name==="schema" || name==="robots" || name==="estimator" || name==="health" || name==="bulk"){ renderLimitNotes(); }
   window.scrollTo({top:0});
 }
+/* ---------- header controls: site switcher, global search, sidebar ---------- */
+$("siteSwitcher").addEventListener("change", () => {
+  const v = $("siteSwitcher").value;
+  if(!v) return;
+  LS.set("selectedSite", v);
+  applySelectedSite();
+});
+$("globalSearch").addEventListener("input", () => {
+  const box = $("globalSearchResults"); if(!box) return;
+  const targets = globalSearchTargets($("globalSearch").value);
+  box.innerHTML = targets.map((t,i) => '<button type="button" class="gs-result" data-gs="' + i + '">' + esc(t.label) + '</button>').join("");
+  box.querySelectorAll("[data-gs]").forEach(b => b.addEventListener("click", () => {
+    const t = targets[+b.dataset.gs]; if(!t) return;
+    const el = $(t.field); if(el) el.value = t.value;
+    showTab(t.tab, true); box.innerHTML = ""; $("globalSearch").value = "";
+  }));
+});
+$("globalSearch").addEventListener("keydown", e => { if(e.key === "Enter"){ e.preventDefault(); globalSearchGo($("globalSearch").value); } });
+$("headerSignInBtn").addEventListener("click", focusAuth);
+$("headerGuestBtn").addEventListener("click", enterGuestMode);
+$("authGuestLink").addEventListener("click", enterGuestMode);
+$("siteSaveBtn").addEventListener("click", () => {
+  const sites = normalizeSiteList([$("siteSlot1").value, $("siteSlot2").value, $("siteSlot3").value]);
+  LS.set("sites", sites);
+  if(sites.length) LS.set("selectedSite", sites[0]);
+  renderSiteSwitcher(); applySelectedSite();
+  $("siteSaved").textContent = sites.length ? "Saved — " + sites.length + " site(s)." : "Saved — no sites.";
+  setTimeout(() => { $("siteSaved").textContent = ""; }, 3000);
+});
+/* Sidebar: collapse to icons on desktop, drawer on small screens. */
+$("sidebarToggle").addEventListener("click", () => { document.body.classList.toggle("sidebar-collapsed"); });
+$("navToggle").addEventListener("click", () => { document.body.classList.toggle("nav-open"); });
+document.querySelectorAll("#sidebar button[data-tab], #bottomNav button[data-tab]").forEach(b => b.addEventListener("click", () => { document.body.classList.remove("nav-open"); }));
+
 /* Upgrade buttons (header, plan card, pricing, limit prompts) — delegated so
    dynamically rendered buttons work too. */
 document.addEventListener("click", e => {
@@ -104,7 +215,7 @@ document.addEventListener("click", e => {
   if(t){ e.preventDefault(); goUpgrade(); }
 });
 async function goUpgrade(){
-  if(!currentUser){ showApp(); focusAuth(); showAuthMsg("Sign in before upgrading."); return; }
+  if(!currentUser){ focusAuth(); showAuthMsg("Sign in before upgrading."); return; }
   try {
     const token=await supabaseAccessToken();
     const res=await fetchJsonTimeout(SUPABASE_URL+"/functions/v1/billing",30000,{
@@ -135,7 +246,7 @@ async function applyPendingPaypalSub(){
 function refreshAuthUI(){
   $("authLoggedOut").hidden = !!currentUser;
   $("authLoggedIn").hidden = !currentUser;
-  $("homeBtn").hidden = !!currentUser;
+  applyVersionLabels();
   $("upgradeBtn").style.display = currentPlan === 'pro' ? 'none' : '';
   if(currentUser){
     $("authUserEmail").textContent = currentUser.email || "";
@@ -241,6 +352,7 @@ async function afterSignIn(user){
     if(generation !== authGeneration) return;
     cloudUserId = user.id;
     await applyPendingPaypalSub();
+    try{ localStorage.removeItem(GUEST_KEY); }catch(e){}
     refreshAuthUI(); showApp(); renderAll(); loadPreferences();
     $("authPass").value = "";
   })();
@@ -256,7 +368,7 @@ async function doSignUp(){
   if(!email || !pass){ showAuthMsg("Enter an email and a password."); return; }
   if(pass.length < 12){ showAuthMsg("Use a password of at least 12 characters."); return; }
   showAuthMsg("Creating your account…");
-  const { data, error } = await sb.auth.signUp({ email, password: pass });
+  const { data, error } = await sb.auth.signUp({ email, password: pass, options:{ emailRedirectTo: location.origin + "/app.html" } });
   if(error){ showAuthMsg("Sign-up failed: " + error.message); return; }
   if(data.session && data.session.user){
     showAuthMsg("Account created — welcome!");
@@ -315,7 +427,7 @@ async function doResendConfirmation(){
   const email = ($("authEmail").value||"").trim();
   if(!email){ showAuthMsg("Enter your email above first, then tap Resend confirmation."); return; }
   showAuthMsg("Sending confirmation email…");
-  const { error } = await sb.auth.resend({ type:"signup", email });
+  const { error } = await sb.auth.resend({ type:"signup", email, options:{ emailRedirectTo: location.origin + "/app.html" } });
   if(error){ showAuthMsg("Could not resend: " + error.message); return; }
   showAuthMsg("Confirmation email sent — check your inbox (and spam folder).");
 }
@@ -359,7 +471,7 @@ function usageThisMonth(){
   return { auditsUsed, linksUsed, keywordsUsed };
 }
 function limitNoteText(){
-  if(!currentUser) return "Not signed in — usage is saved in this browser only. Sign in above to keep it in your account.";
+  if(!currentUser) return "Not signed in — usage is saved in this browser only. Sign in to keep it in your account.";
   if(currentPlan === 'pro') return "Pro plan: unlimited audits, keywords, link checks, briefs, compares and tool checks.";
   const u = usageThisMonth();
   const v = v25Usage();
@@ -388,7 +500,7 @@ function renderLimitNotes(){
 function renderPlanCard(){
   const el = $("planCard"); if(!el) return;
   if(!currentUser){
-    el.innerHTML = '<h2>Your plan</h2><p class="muted">You are using SEOForge in this browser only (local mode). <b>Sign in</b> above to save your audits, keywords and revenue to your account — free. Pro is $9/month for unlimited use.</p><button class="btn secondary" data-action="upgrade">See Pro — $9/month</button>';
+    el.innerHTML = '<h2>Your plan</h2><p class="muted">You are using SEOForge in this browser only (local mode). <b>Sign in</b> to save your audits, keywords and revenue to your account — free. Pro is $9/month for unlimited use.</p><button class="btn secondary" data-action="upgrade">See Pro — $9/month</button>';
     return;
   }
   const u = usageThisMonth();
@@ -428,8 +540,15 @@ async function fetchViaProxy(url, timeoutMs){
   try{
     const res = await fetchJsonTimeout(SUPABASE_URL+"/functions/v1/fetch-proxy", timeoutMs||15000, {method:"POST",headers:{"Content-Type":"application/json",apikey:SUPABASE_PUBLISHABLE_KEY,Authorization:"Bearer "+SUPABASE_PUBLISHABLE_KEY},body:JSON.stringify({url})});
     const data = await res.json().catch(()=>({}));
-    if(res.ok && typeof data.text === "string") return {status:data.status||200, ok:!!data.ok, text:data.text, ttfbMs:data.ttfbMs, totalMs:data.totalMs, bytes:data.bytes, compressed:data.compressed, headers:data.headers||null};
+    /* A 403/429 from OUR edge proxy means the TARGET blocked the Supabase
+       datacenter IP — not that the page is down. Fall through to the free
+       public proxies (different IPs, may get through) before giving up. Any
+       other edge result is returned as-is; only a real failure reaches the
+       fallbacks. (202 handling for DuckDuckGo is untouched — the Bing-first
+       SERP switch covers that separately.) */
+    if(res.ok && typeof data.text === "string" && data.status !== 403 && data.status !== 429) return {status:data.status||200, ok:!!data.ok, text:data.text, ttfbMs:data.ttfbMs, totalMs:data.totalMs, bytes:data.bytes, compressed:data.compressed, headers:data.headers||null};
     lastErr = new Error(data.error||("Proxy error (HTTP "+res.status+")"));
+    if(data.status === 403 || data.status === 429) lastErr = new Error("Page fetch failed (HTTP " + data.status + ") — the site blocked our server. Trying another route…");
   }catch(e){ lastErr = e; }
   for(const p of PROXIES){
     try{
@@ -443,16 +562,100 @@ async function fetchViaProxy(url, timeoutMs){
 }
 
 /* ---------- Dashboard ---------- */
+/* ---------- Dashboard: a true overview, real numbers only ---------- */
+/* Inline-SVG sparkline (no library): values 0–100, one polyline. Pure, so it
+   is unit testable. Returns "" for fewer than two points. */
+function sparklineSVG(values, w, h){
+  const vals = (values||[]).filter(v => typeof v === "number" && !isNaN(v));
+  if(vals.length < 2) return "";
+  const W = w||220, H = h||48, pad = 3;
+  const min = Math.min.apply(null, vals), max = Math.max.apply(null, vals);
+  const span = (max - min) || 1;
+  const pts = vals.map((v,i) => ((pad + i*(W-2*pad)/(vals.length-1)).toFixed(1) + "," + (H - pad - (v-min)/span*(H-2*pad)).toFixed(1))).join(" ");
+  return '<svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Trend"><polyline points="' + pts + '" fill="none" stroke="#0f766e" stroke-width="2"/></svg>';
+}
+/* Skeleton rows while a proxy fetch runs — a visible loading state, not just a
+   dimmed button. Rendered into the results area and replaced by the first
+   real render; the .prog text updates overwrite nothing here. */
+function skeletonHtml(n){
+  let bars = "";
+  for(let i=0;i<(n||3);i++) bars += '<i style="width:' + (92 - i*12) + '%"></i>';
+  return '<div class="skel" aria-hidden="true">' + bars + '</div>';
+}
 function renderDashboard(){
-  $("stAudits").textContent = S.get("audits", []).length;
-  $("stKeywords").textContent = S.get("keywords", []).length;
-  $("stLinks").textContent = S.get("links", []).length;
+  const audits = S.get("audits", []);
+  const kws = S.get("keywords", []);
+  const links = S.get("links", []);
   const rev = S.get("revenue", []);
+  $("stAudits").textContent = audits.length;
+  $("stKeywords").textContent = kws.length;
+  $("stLinks").textContent = links.length;
   $("stRevenue").textContent = "$" + rev.reduce((a,r)=>a+(+r.amount||0),0).toFixed(2);
   $("stOrders").textContent = S.get("orders", []).length;
   $("dashStoreNote").textContent = currentUser
     ? "Totals are computed from your SEOForge account (stored in Supabase, visible only to you)."
     : "Totals are computed from what is saved in this browser only (localStorage). Saved data stays in this browser; live tools send your queries to external providers.";
+  /* Site health from the latest audit — real numbers only, empty state names
+     the one next action. */
+  const dh = $("dashHealth");
+  if(dh){
+    const last = audits[0];
+    if(!last) dh.innerHTML = '<p class="muted">No audits yet — <b>run your first audit</b> to see your site health here.</p>';
+    else dh.innerHTML = '<p><b>' + esc(last.url||"") + '</b> <span class="muted">— ' + fmtDate(last.date) + '</span><br>'
+      + (last.psi!=null ? 'PageSpeed <b>' + last.psi + '/100</b>' : 'PageSpeed not scored')
+      + (last.ok!=null ? ' · <b>' + last.ok + '</b> of ' + last.total + ' URLs reachable' : '') + '</p>';
+  }
+  const ds = $("dashSpark");
+  if(ds){
+    const withPsi = audits.filter(a => a.psi!=null).slice(0,10).reverse();
+    ds.innerHTML = withPsi.length >= 2
+      ? sparklineSVG(withPsi.map(a => a.psi)) + '<p class="muted">PageSpeed trend — last ' + withPsi.length + ' scored audits.</p>'
+      : '<p class="muted">Run two or more audits to see a PageSpeed trend.</p>';
+  }
+  /* Top tracked keywords with their last position. */
+  const dk = $("dashKeywords");
+  if(dk){
+    if(!kws.length) dk.innerHTML = '<p class="muted">No keywords tracked yet — <b>add a keyword</b> in the Rank Tracker.</p>';
+    else dk.innerHTML = '<ul>' + kws.slice(0,5).map(k => {
+      const c = k.checks||[];
+      const last = c.length ? c[c.length-1] : null;
+      return '<li><b>' + esc(k.keyword) + '</b> — ' + (last ? (last.position ? 'last position #' + last.position + ' (' + fmtDate(last.date) + ')' : 'not in top results (' + fmtDate(last.date) + ')') : 'never checked') + '</li>';
+    }).join("") + '</ul>';
+  }
+  /* Revenue this month. */
+  const dr = $("dashRevenue");
+  if(dr){
+    const m = thisMonthPrefix();
+    const thisMonth = rev.filter(e => (e.date||"").indexOf(m)===0);
+    const t = thisMonth.reduce((a,e)=>a+(+e.amount||0),0);
+    dr.innerHTML = t > 0
+      ? '<p><b>$' + t.toFixed(2) + '</b> logged this month across ' + thisMonth.length + ' entries.</p>'
+      : '<p class="muted">No revenue logged this month — <b>log ad revenue</b> to track it here.</p>';
+  }
+  /* Recent activity: latest audits + tool checks, newest first. */
+  const da = $("dashActivity");
+  if(da){
+    const acts = [];
+    audits.slice(0,3).forEach(a => acts.push({d:a.date, t:"Audit: " + (a.url||"") + (a.psi!=null ? " — PageSpeed " + a.psi + "/100" : "")}));
+    S.get("toolChecks", []).slice(0,3).forEach(t => acts.push({d:t.date, t:"Check (" + t.type + "): " + (t.url||"")}));
+    acts.sort((a,b) => (b.d||"").localeCompare(a.d||""));
+    da.innerHTML = acts.length
+      ? '<ul>' + acts.slice(0,5).map(a => '<li><span class="muted">' + fmtDate(a.d) + ' — </span>' + esc(a.t) + '</li>').join("") + '</ul>'
+      : '<p class="muted">Nothing yet — your latest audits and checks will appear here.</p>';
+  }
+  /* Top opportunities / next actions: one clear step per gap, never invented. */
+  const op = $("dashOpps");
+  if(op){
+    const items = [];
+    if(!audits.length) items.push({goto:"audit", label:"Run your first audit"});
+    if(!currentUser) items.push({goto:"preferences", label:"Sign in to save your work to your account"});
+    else if(!googleConnected) items.push({goto:"gsc", label:"Connect Google for Search Console data"});
+    if(!kws.length) items.push({goto:"rank", label:"Add a keyword to track"});
+    if(!links.length) items.push({goto:"links", label:"Verify a paid link"});
+    if(!items.length) items.push({goto:"audit", label:"Run a fresh audit to keep scores current"});
+    op.innerHTML = '<div class="row">' + items.slice(0,3).map(i => '<button class="btn secondary" data-goto="' + i.goto + '">' + esc(i.label) + '</button>').join("") + '</div>';
+    op.querySelectorAll("[data-goto]").forEach(b => b.addEventListener("click", () => showTab(b.dataset.goto, true)));
+  }
   renderDashboardExtras();
 }
 
@@ -477,6 +680,7 @@ async function runAudit(psiOnly){
   const strategy = $("psiStrategy").value;
   const limit = Math.max(5, Math.min(50, parseInt($("auditLimit").value||"50",10)));
   const started = Date.now();
+  out.innerHTML = skeletonHtml(3);
   try{
     let urls = [], sitemapNote = "";
     if(!psiOnly){
@@ -520,7 +724,7 @@ async function runAudit(psiOnly){
           : (r.status ? '<span class="pill bad">HTTP ' + r.status + '</span>' : '<span class="pill warn">Proxy error</span>');
         return "<tr><td>" + esc(r.url) + "</td><td>" + pill + "</td><td class='muted'>" + (r.ok ? "" : esc(r.err||"")) + "</td></tr>";
       }).join("");
-      out.innerHTML += '<div class="card" style="margin-top:10px"><h3>Sitemap crawl — ' + urls.length + ' URLs</h3>'
+      out.innerHTML = '<div class="card" style="margin-top:10px"><h3>Sitemap crawl — ' + urls.length + ' URLs</h3>'
         + (sitemapNote ? '<p class="muted">'+sitemapNote+'</p>' : '')
         + '<p><span class="pill ok">' + okN + ' reachable</span> <span class="pill bad">' + failN + ' failed / proxy errors</span></p>'
         + '<p class="muted">“Proxy error” means the free proxy could not fetch that URL — it does not prove the page is down. Retry if you see many of them.</p>'
@@ -543,6 +747,7 @@ async function runAudit(psiOnly){
     // PageSpeed
     prog.textContent = "Running PageSpeed Insights (" + strategy + ") — this can take up to a minute …";
     const psi = await runPSI(site, strategy);
+    if(psiOnly) out.innerHTML = "";
     out.innerHTML += psiHtml(psi, site, strategy);
     lastAudit = { site, score: psi.score, lcp: psi.lcp, cls: psi.cls, date: todayISO() };
     out.innerHTML += shareBarHtml(lastAudit);
@@ -566,8 +771,44 @@ async function runAudit(psiOnly){
     renderAuditHistory();
   }
 }
-async function runPSI(url, strategy){
+/* PageSpeed routing (v2.10.0): a customer with no key used to hit Google's
+   shared no-key quota (429) and get an error instead of a report. Now the
+   default route is the server-side `pagespeed` edge function, which calls the
+   API with a key kept in Supabase (PAGE_SPEED_API_KEY) — the customer needs
+   no key at all. A personal key in Workspace settings still works as an
+   override (direct client-side call). If the edge function is not deployed
+   yet, or the server key is not set, the code falls back to the direct
+   no-key call with its honest quota message — a score is never faked. */
+const PAGESPEED_FN = SUPABASE_URL + "/functions/v1/pagespeed";
+function pagespeedRoute(){
   const key = (LS.get("settings", {}).psiKey||"").trim();
+  return key ? { via:"direct", key } : { via:"edge" };
+}
+async function runPSI(url, strategy){
+  const route = pagespeedRoute();
+  if(route.via === "direct") return runPSIDirect(url, strategy, route.key);
+  try{
+    const res = await fetchJsonTimeout(PAGESPEED_FN, 120000, {method:"POST", headers:{"Content-Type":"application/json", apikey:SUPABASE_PUBLISHABLE_KEY, Authorization:"Bearer "+SUPABASE_PUBLISHABLE_KEY}, body:JSON.stringify({url, strategy})});
+    const data = await res.json().catch(()=>({}));
+    if(res.ok) return { score:data.score, lcp:data.lcp||null, cls:data.cls||null, seo:data.seo||[], finalUrl:data.finalUrl||url };
+    /* 404 = function not deployed yet; 400 + "not configured" = the server
+       key is not set. Both fall back to the direct no-key call below. Any
+       other edge error (e.g. Google's quota on the server key) is real and
+       is surfaced as-is — never silently replaced with a different number. */
+    if(res.status===404 || res.status===501 || (res.status===400 && /not configured/i.test(data.error||""))){
+      /* fall through to the direct call */
+    }else{
+      throw new Error(data.error || ("PageSpeed service error (HTTP " + res.status + ")"));
+    }
+  }catch(e){
+    /* Network-level failure reaching the edge function also falls back. A
+       deliberate throw above (real edge error) is re-thrown, not swallowed:
+       its message never matches the network patterns. */
+    if(e.message && !/Failed to fetch|NetworkError|timed out|abort|Load failed/i.test(e.message)) throw e;
+  }
+  return runPSIDirect(url, strategy, "");
+}
+async function runPSIDirect(url, strategy, key){
   let api = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=" + encodeURIComponent(url) + "&strategy=" + strategy;
   if(key) api += "&key=" + encodeURIComponent(key);
   let res;
@@ -577,7 +818,7 @@ async function runPSI(url, strategy){
   try{ data = await res.json(); }catch(e){ throw new Error("PageSpeed returned an unreadable response (HTTP " + res.status + ")."); }
   if(!res.ok){
     const msg = (data.error && data.error.message) || ("HTTP " + res.status);
-    if(res.status===429) throw new Error("PageSpeed Insights quota exhausted (HTTP 429): " + msg + " The free no-key quota is shared and often runs out. Add a free API key in Ad Revenue → Settings, or retry later.");
+    if(res.status===429) throw new Error("PageSpeed Insights quota exhausted (HTTP 429): " + msg + " The free no-key quota is shared and often runs out. Add a free API key in Workspace settings, or retry later.");
     throw new Error("PageSpeed Insights failed: " + msg);
   }
   const lr = data.lighthouseResult;
@@ -677,8 +918,11 @@ async function runKeywords(){
         const d = await estimateDifficulty(b.dataset.diffKw);
         kwDiffCache[b.dataset.diffKw.toLowerCase()] = d.score;
         b.textContent = "KD " + d.score + " · " + d.label;
-        b.title = "Estimate from the live DuckDuckGo top 10 — not a paid index";
-      }catch(e){ b.textContent = "Failed — retry"; b.disabled = false; alert("Difficulty check failed: " + (e.message||e)); }
+        b.title = "Estimate from the live Bing top 10 — not a paid index";
+      }catch(e){
+        b.textContent = "Failed — retry"; b.disabled = false;
+        try{ const n = b.parentElement ? b.parentElement.querySelector(".diff-note") : null; if(n) n.textContent = "Difficulty check failed: " + (e.message||e); else b.title = "Difficulty check failed: " + (e.message||e); }catch(err){}
+      }
     }));
   }
   btn.disabled = false;
@@ -732,11 +976,12 @@ function renderRankList(){
   $("rkList").innerHTML = list.map((k, i) => {
     const last = k.checks.length ? k.checks[k.checks.length-1] : null;
     const hist = k.checks.slice(-5).reverse().map(c =>
-      '<li>' + fmtDate(c.date) + ': ' + (c.position ? 'position ' + c.position : 'not in top results') + ' (DuckDuckGo)</li>').join("");
+      '<li>' + fmtDate(c.date) + ': ' + (c.position ? 'position ' + c.position : 'not in top results') + ' (Bing)</li>').join("");
     return '<div class="listing"><b>' + esc(k.keyword) + '</b> <span class="muted">→ ' + esc(k.url||"(no target URL set)") + '</span><br>'
       + (last ? '<span class="pill ' + (last.position ? 'ok' : 'warn') + '">Last: ' + (last.position ? '#' + last.position : 'not found') + ' · ' + fmtDate(last.date) + '</span>' : '<span class="pill info">Never checked</span>')
       + (k.difficulty!=null ? ' <span class="pill info">Difficulty ' + k.difficulty + '/100</span>' : '')
       + ' <button class="btn small" data-check="' + i + '">Check now</button>'
+      + ' <span class="rank-check-note muted">' + (k.lastError ? 'Rank check failed: ' + esc(k.lastError) + ' — the search source may be blocked; retry later.' : '') + '</span>'
       + ' <button class="btn small secondary" data-diff="' + i + '">Difficulty</button>'
       + ' <button class="btn small danger" data-del-kw="' + i + '">Remove</button>'
       + (hist ? '<ul class="muted">' + hist + '</ul>' : '') + '</div>';
@@ -755,7 +1000,10 @@ function renderRankList(){
         LS.set("keywords", S.get("keywords", []));
       }
       renderRankList(); renderDashboard();
-    }catch(e){ alert("Difficulty check failed: " + (e.message||e)); b.disabled = false; b.textContent = "Difficulty"; }
+    }catch(e){
+      b.disabled = false; b.textContent = "Failed — retry";
+      try{ const n = b.parentElement ? b.parentElement.querySelector(".diff-note") : null; if(n) n.textContent = "Difficulty check failed: " + (e.message||e); else b.title = "Difficulty check failed: " + (e.message||e); }catch(err){}
+    }
   }));
   $("rkList").querySelectorAll("[data-del-kw]").forEach(b => b.addEventListener("click", async () => {
     const list2 = S.get("keywords", []);
@@ -774,20 +1022,34 @@ async function checkRank(idx, btn){
   const item = list[idx]; if(!item) return;
   if(!item.url){ alert("Set a target URL for this keyword first (edit it by removing and re-adding)."); return; }
   btn.disabled = true; btn.textContent = "Checking…";
+  item.lastError = null;
+  /* Inline failure (no alert): the button becomes "Failed — retry" and the
+     reason appears in the .rank-check-note span next to it (rendered by
+     renderRankList, so it survives re-renders for the rest of the session).
+     The note is also set live at the start, so the row never sits silent
+     while the search sources are being tried. */
+  const rankNote = msg => {
+    try{
+      const note = btn.parentElement ? btn.parentElement.querySelector(".rank-check-note") : null;
+      if(note) note.textContent = msg;
+      else btn.title = msg;
+    }catch(e){}
+  };
+  rankNote("Checking Bing results…");
+  const failRank = msg => {
+    btn.disabled = false; btn.textContent = "Failed — retry";
+    item.lastError = msg;
+    rankNote("Rank check failed: " + msg + " — the search source may be blocked; retry later.");
+  };
   try{
     const target = normHost(new URL(item.url.startsWith("http")?item.url:"https://"+item.url).hostname);
-    const ddg = "https://html.duckduckgo.com/html/?q=" + encodeURIComponent(item.keyword);
-    const { text } = await fetchViaProxy(ddg, 20000);
-    const doc = new DOMParser().parseFromString(text, "text/html");
-    const links = [...doc.querySelectorAll("a.result__a")].map(a => a.getAttribute("href")||"");
-    if(!links.length) throw new Error("Search results could not be parsed; the request may be blocked. No ranking was saved.");
+    const results = await serpTopResults(item.keyword, 10, 15000);
+    if(!results.length) throw new Error("Search results could not be parsed; the request may be blocked. No ranking was saved.");
     let position = null;
-    for(let i=0;i<links.length;i++){
-      let href = links[i];
+    for(let i=0;i<results.length;i++){
+      let href = results[i].url;
       try{
-        const m = href.match(/[?&]uddg=([^&]+)/);
-        if(m) href = decodeURIComponent(m[1]);
-        const host = normHost(new URL(href, "https://duckduckgo.com").hostname);
+        const host = normHost(new URL(href).hostname);
         if(host === target || host.endsWith("." + target)){ position = i+1; break; }
       }catch(e){ /* skip bad href */ }
     }
@@ -799,8 +1061,11 @@ async function checkRank(idx, btn){
     if(S.mode==='local') LS.set("keywords", list);
     renderRankList(); renderDashboard();
   }catch(e){
-    alert("Rank check failed: " + (e.message||e) + "\nThe free proxy or DuckDuckGo may be unreachable — retry later.");
-    btn.disabled = false; btn.textContent = "Check now";
+    failRank(e.message||e);
+  }finally{
+    /* Stuck-state guard: if neither the success render nor failRank ran
+       (e.g. the render itself threw), never leave a disabled "Checking…". */
+    if(btn.isConnected && btn.textContent === "Checking…"){ btn.disabled = false; btn.textContent = "Check now"; rankNote(""); }
   }
 }
 
@@ -828,6 +1093,7 @@ async function runLinkVerify(){
       btn.disabled=false; return;
     }
   }
+  out.innerHTML = skeletonHtml(3);
   prog.textContent = "Fetching " + page + " …";
   try{
     const { text, status } = await fetchViaProxy(page, 20000);
@@ -1127,7 +1393,8 @@ $("setAiTestBtn").addEventListener("click", async () => {
 const SEED_LISTINGS = [
   { id:"seed-1", site:"https://www.lookforit.xyz", niche:"AI tools directory", price:20, da:"", dr:"", title:"LookForIt — Sponsored listing", desc:"Your AI tool listed on lookforit.xyz (153 verified tools, 20 categories). One-time payment, live within 24 hours, marked sponsored." },
   { id:"seed-2", site:"https://www.lookforit.xyz", niche:"AI tools directory", price:49, da:"", dr:"", title:"LookForIt — Manual review", desc:"Hands-on review of your AI tool, written up properly and listed on LookForIt. One-time $49." },
-  { id:"seed-3", site:"https://www.estatepath.online", niche:"Real estate (Florida, USA)", price:null, da:"", dr:"", title:"Estate Path — Guest post", desc:"Guest post on the Estate Path real estate blog. Price: DM for rates — no fixed price." }
+  { id:"seed-3", site:"https://www.estatepath.online", niche:"Real estate (Florida, USA)", price:null, da:"", dr:"", title:"Estate Path — Guest post", desc:"Guest post on the Estate Path real estate blog. Price: DM for rates — no fixed price." },
+  { id:"seed-4", site:"https://syedsenterprises.org", niche:"Software, SEO & content services", price:null, da:"", dr:"", title:"Syed Enterprises — Services hub", desc:"All services in one place — SEO tools, AI tool listings, real estate content and custom software. Browse the full list on the hub; DM for rates." }
 ];
 function allListings(){ return SEED_LISTINGS.concat(S.get("listings", [])); }
 async function placeOrder(l){
@@ -1263,7 +1530,6 @@ async function googleApi(action, body){
 }
 async function connectGoogle(){
   if(!currentUser){
-    showApp();
     showAuthMsg("Create a free account or sign in first — then you can connect Google.");
     focusAuth();
     return;
@@ -1598,21 +1864,117 @@ function pageWordCount(doc){
   clone.querySelectorAll("script,style,noscript,svg").forEach(n => n.remove());
   return (clone.textContent||"").trim().split(/\s+/).filter(Boolean).length;
 }
-async function ddgTopResults(keyword, n){
-  const ddg = "https://html.duckduckgo.com/html/?q=" + encodeURIComponent(keyword);
-  const { text } = await fetchViaProxy(ddg, 20000);
-  const doc = new DOMParser().parseFromString(text, "text/html");
+/* ---------- SERP sources: Bing first, DuckDuckGo last (Brave excluded) ---------- */
+/* Why Bing first: DuckDuckGo's html endpoint returns HTTP 202 with a block page
+   (zero result links) to our server-side fetch-proxy — a datacenter-IP block,
+   proven 23 Nov 2026 (direct curl from a normal IP returns 11 results).
+   Bing via the same proxy returns HTTP 200 with 10 li.b_algo blocks.
+   Brave was tested the same way and is NOT usable: it returns 200 but hides
+   every destination behind opaque /go/v1/<token> redirect URLs with no
+   data-url, so no real URL can be recovered — it is deliberately not a source.
+   Parsers below are pure string functions (no DOMParser) so they are unit
+   testable in Node. */
+function b64urlDecode(s){
+  let t = String(s||"").replace(/-/g,"+").replace(/_/g,"/").replace(/[^A-Za-z0-9+/=]/g,"");
+  while(t.length % 4) t += "=";
+  const A = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  const idx = c => A.indexOf(c);
+  const bytes = [];
+  for(let i=0;i<t.length;i+=4){
+    const g = t.slice(i, i+4);
+    const pad = (g.match(/=+$/)||[""])[0].length;
+    const v = [idx(g[0]), idx(g[1]), g[2]==="="?0:idx(g[2]), g[3]==="="?0:idx(g[3])];
+    const n = (v[0]<<18)|(v[1]<<12)|(v[2]<<6)|v[3];
+    bytes.push((n>>16)&255);
+    if(pad<2) bytes.push((n>>8)&255);
+    if(pad<1) bytes.push(n&255);
+  }
+  let str = "";
+  for(const b of bytes) str += "%" + b.toString(16).padStart(2,"0");
+  try{ return decodeURIComponent(str); }catch(e){ return ""; }
+}
+/* Bing hides the real URL in the u= param of a /ck/a redirect link, base64url
+   encoded with a 2-character prefix ("a1") — e.g.
+   u=a1aHR0cHM6Ly9idWlsdGluLmNvbS9hcnRpZmljaWFsLWludGVsbGlnZW5jZS9haS10b29scw
+   decodes (after stripping "a1") to https://builtin.com/artificial-intelligence/ai-tools.
+   Tries the raw value first, then the value with the 2-char prefix stripped;
+   returns "" when neither decodes to an http(s) URL. A direct http(s) href
+   that is not on bing.com passes through untouched. */
+function decodeBingUrl(href){
+  if(!href) return "";
+  try{
+    const u = new URL(href, "https://www.bing.com");
+    if(u.hostname !== "www.bing.com" && u.hostname !== "bing.com") return /^https?:\/\//i.test(href) ? href : "";
+    const enc = u.searchParams.get("u");
+    if(!enc) return "";
+    for(const cand of [enc, enc.slice(2)]){
+      const decoded = b64urlDecode(cand);
+      if(/^https?:\/\//i.test(decoded)) return decoded;
+    }
+    return "";
+  }catch(e){ return /^https?:\/\//i.test(href) ? href : ""; }
+}
+function stripTags(s){ return String(s||"").replace(/<[^>]+>/g,"").replace(/&amp;/g,"&").replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&lt;/g,"<").replace(/&gt;/g,">").trim(); }
+function parseBingResults(html, n){
   const out = [];
-  doc.querySelectorAll("a.result__a").forEach(a => {
-    if(out.length >= n) return;
-    let href = a.getAttribute("href")||"";
-    const m = href.match(/[?&]uddg=([^&]+)/);
-    if(m){ try{ href = decodeURIComponent(m[1]); }catch(e){} }
-    if(!/^https?:\/\//i.test(href)) return;
-    out.push({ url: href, title: (a.textContent||"").trim() });
-  });
-  if(!out.length) throw new Error("Search results unavailable or blocked; no ranking can be inferred.");
+  const blocks = String(html||"").match(/<li\b[^>]*\bb_algo\b[^>]*>[\s\S]*?<\/li>/gi) || [];
+  for(const b of blocks){
+    if(out.length >= n) break;
+    const m = /<h2\b[^>]*>\s*<a\b([^>]*)>([\s\S]*?)<\/a>/i.exec(b);
+    if(!m) continue;
+    const hrefM = /href="([^"]+)"/i.exec(m[1]||"");
+    if(!hrefM) continue;
+    let url = decodeBingUrl(hrefM[1]);
+    if(!url){
+      /* Fallback: rebuild from the <cite> display text
+         ("example.com › path › page" -> https://example.com/path/page). */
+      const cite = /<cite\b[^>]*>([\s\S]*?)<\/cite>/i.exec(b);
+      if(cite){
+        const parts = stripTags(cite[1]).split(/\s*›\s*/).map(s=>s.trim()).filter(Boolean);
+        if(parts.length) url = "https://" + parts.join("/");
+      }
+    }
+    const title = stripTags(m[2]);
+    if(/^https?:\/\//i.test(url) && title) out.push({url, title});
+  }
   return out;
+}
+function parseDdgResults(html, n){
+  const out = [];
+  const re = /<a\b([^>]*)>([\s\S]*?)<\/a>/gi;
+  let m;
+  while((m = re.exec(String(html||""))) && out.length < n){
+    if(!/\bresult__a\b/.test(m[1]||"")) continue;
+    const hrefM = /href="([^"]+)"/i.exec(m[1]||"");
+    if(!hrefM) continue;
+    let href = hrefM[1];
+    const u = href.match(/[?&]uddg=([^&]+)/);
+    if(u){ try{ href = decodeURIComponent(u[1]); }catch(e){} }
+    const title = stripTags(m[2]);
+    if(/^https?:\/\//i.test(href) && title) out.push({url: href, title});
+  }
+  return out;
+}
+/* Multi-source top results: Bing first, DuckDuckGo as last resort. Each
+   source is tried in turn; a source that returns no parseable results (e.g.
+   DuckDuckGo's 202 block page) simply falls through to the next. Throws only
+   when every source fails. */
+async function serpTopResults(keyword, n, timeoutMs){
+  const q = encodeURIComponent(keyword);
+  const sources = [
+    { name:"Bing", url:"https://www.bing.com/search?q="+q, parse:parseBingResults },
+    { name:"DuckDuckGo", url:"https://html.duckduckgo.com/html/?q="+q, parse:parseDdgResults }
+  ];
+  let lastErr = null;
+  for(const s of sources){
+    try{
+      const { text } = await fetchViaProxy(s.url, timeoutMs||20000);
+      const out = s.parse(text, n);
+      if(out.length) return out;
+      lastErr = new Error("No results could be parsed from " + s.name + " — it may be blocking automated requests.");
+    }catch(e){ lastErr = e; }
+  }
+  throw lastErr || new Error("Search results unavailable or blocked; no ranking can be inferred.");
 }
 
 /* ---------- 1. SERP Preview + Meta/OG checker ---------- */
@@ -1621,6 +1983,7 @@ async function runSerp(){
   out.innerHTML = ""; prog.textContent = "Fetching page…";
   const url = normaliseSite($("serpUrl").value);
   if(!url){ out.innerHTML = '<div class="err">Enter a page URL first.</div>'; prog.textContent=""; return; }
+  out.innerHTML = skeletonHtml(3);
   try{
     const { doc } = await fetchPageDoc(url);
     const title = ((doc.querySelector("title")||{}).textContent||"").trim();
@@ -1651,6 +2014,7 @@ async function runBrokenLinks(){
   const page = normaliseSite($("blUrl").value);
   if(!page){ out.innerHTML = '<div class="err">Enter a page URL first.</div>'; return; }
   if(!checkToolLimit(out)) return;
+  out.innerHTML = skeletonHtml(3);
   prog.textContent = "Fetching " + page + " …";
   try{
     const { doc } = await fetchPageDoc(page);
@@ -1672,25 +2036,26 @@ async function runBrokenLinks(){
       await Promise.all(links.slice(i, i+BATCH).map(async (l, j) => {
         try{
           const r = await fetchViaProxy(l.url, 10000);
-          results[i+j] = { url:l.url, anchor:l.anchor, status: r.status, ok: r.ok, proxyErr: false };
+          results[i+j] = { url:l.url, anchor:l.anchor, status: r.status, ok: r.ok, rateLimited: r.status===429, proxyErr: false };
         }catch(e){ results[i+j] = { url:l.url, anchor:l.anchor, status: null, ok: false, proxyErr: true, err: String(e.message||e) }; }
       }));
       prog.textContent = "Checked " + Math.min(i+BATCH, links.length) + " of " + links.length + " links …";
     }
-    const broken = results.filter(r => !r.ok && !r.proxyErr);
+    const broken = results.filter(r => !r.ok && !r.proxyErr && !r.rateLimited);
+    const rateLimited = results.filter(r => r.rateLimited);
     const unverified = results.filter(r => r.proxyErr);
     const okN = results.filter(r => r.ok).length;
-    let html = '<p><span class="pill ok">' + okN + ' OK</span> <span class="pill bad">' + broken.length + ' broken</span> <span class="pill warn">' + unverified.length + ' unverified (proxy error)</span></p>';
+    let html = '<p><span class="pill ok">' + okN + ' OK</span> <span class="pill bad">' + broken.length + ' broken</span>' + (rateLimited.length ? ' <span class="pill warn">' + rateLimited.length + ' rate-limited (429)</span>' : '') + ' <span class="pill warn">' + unverified.length + ' unverified (proxy error)</span></p>';
     html += '<button class="btn secondary" id="blCsvBtn">Export results (CSV)</button>';
     html += '<div style="overflow-x:auto"><table><tr><th>Link</th><th>Status</th><th>Anchor</th></tr>' + results.map(r => {
-      const pill = r.ok ? '<span class="pill ok">OK ' + r.status + '</span>' : r.proxyErr ? '<span class="pill warn">Unverified</span>' : '<span class="pill bad">Broken ' + (r.status||"") + '</span>';
-      const note = r.proxyErr ? ' <span class="muted">free proxy could not reach it</span>' : '';
+      const pill = r.ok ? '<span class="pill ok">OK ' + r.status + '</span>' : r.proxyErr ? '<span class="pill warn">Unverified</span>' : r.rateLimited ? '<span class="pill warn">Rate-limited 429</span>' : '<span class="pill bad">Broken ' + (r.status||"") + '</span>';
+      const note = r.proxyErr ? ' <span class="muted">free proxy could not reach it</span>' : r.rateLimited ? ' <span class="muted">the site throttled the check — retry later, not a broken link</span>' : '';
       return '<tr><td>' + esc(r.url) + '</td><td>' + pill + note + '</td><td>' + esc(r.anchor||"") + '</td></tr>';
     }).join("") + '</table></div>';
     out.innerHTML = html;
-    $("blCsvBtn").addEventListener("click", () => downloadCSV("seoforge-broken-links.csv", ["url","status","anchor"], results.map(r => [r.url, r.ok ? ("OK " + r.status) : r.proxyErr ? "Unverified" : ("Broken " + (r.status||"")), r.anchor||""])));
+    $("blCsvBtn").addEventListener("click", () => downloadCSV("seoforge-broken-links.csv", ["url","status","anchor"], results.map(r => [r.url, r.ok ? ("OK " + r.status) : r.proxyErr ? "Unverified" : r.rateLimited ? "Rate-limited 429" : ("Broken " + (r.status||"")), r.anchor||""])));
     prog.textContent = "";
-    await recordToolCheck("broken-links", page, okN + " OK, " + broken.length + " broken, " + unverified.length + " unverified of " + links.length + " checked");
+    await recordToolCheck("broken-links", page, okN + " OK, " + broken.length + " broken, " + rateLimited.length + " rate-limited, " + unverified.length + " unverified of " + links.length + " checked");
   }catch(e){
     out.innerHTML = '<div class="err"><b>Check failed:</b> ' + esc(e.message||e) + '</div>'; prog.textContent = "";
   }
@@ -1707,16 +2072,30 @@ async function runRedirects(){
   prog.textContent = "Following redirects…";
   const hops = [];
   let current = start;
+  /* Whole hop walk caps at 45s — it must never spin for minutes while the
+     user watches "Following redirects…". (Old code: 2 proxies x 12s x 10
+     hops = up to 240s of silence.) */
+  const deadline = Date.now() + 45000;
   try{
-    for(let hop=0; hop<10; hop++){
+    for(let hop=0; hop<10 && Date.now() < deadline; hop++){
       let moved = false, finished = false;
       for(const p of PROXIES){
+        if(Date.now() >= deadline) break;
         try{
           const c = new AbortController();
           const t = setTimeout(() => c.abort(), 12000);
           let res;
           try{ res = await fetch(p(current), { signal: c.signal, redirect: "manual" }); }
           finally{ clearTimeout(t); }
+          /* A 5xx from a free proxy is usually the PROXY failing, not the
+             target — recognise its error page and try the next proxy instead
+             of recording the proxy's 500 as the site's status. */
+          if(res.status >= 500){
+            let t2 = "";
+            try{ t2 = await res.text(); }catch(e){}
+            if(isProxyErrorPage(res.status, t2)) continue;
+          }
+          if(res.status===522 || res.status===408) continue;
           const loc = res.headers.get("location");
           if(res.status >= 300 && res.status < 400 && loc){
             let next;
@@ -1735,14 +2114,40 @@ async function runRedirects(){
       }
       if(finished || !moved) break;
     }
+    /* The walk knows the final STATUS (last hop) and the final URL only when
+       a hop exposed an explicit destination. A "final response" hop means the
+       proxy followed redirect(s) server-side, so its final URL is unknown to
+       us — never claim the fetched URL is the final one. The allorigins /get
+       call below is the supplement that reports the true final URL. */
     let finalUrl = null, finalStatus = null;
-    try{
-      const r = await fetchTimeout("https://api.allorigins.win/get?url=" + encodeURIComponent(start), 15000);
-      if(r.ok){
-        const j = await r.json();
-        if(j.status){ finalUrl = j.status.url || null; finalStatus = j.status.http_code || null; }
+    if(hops.length){
+      const last = hops[hops.length-1];
+      finalStatus = last.status;
+      if(last.to) finalUrl = last.to;
+    }
+    if(!finalUrl){
+      try{
+        const r = await fetchTimeout("https://api.allorigins.win/get?url=" + encodeURIComponent(start), 15000);
+        if(r.ok){
+          const j = await r.json();
+          if(j.status){ finalUrl = j.status.url || null; finalStatus = j.status.http_code || finalStatus; }
+        }
+      }catch(e){ /* ignore — the fallback below still reports honestly */ }
+    }
+    /* If the hop walk saw nothing at all, fall back to our own fetch-proxy
+       (edge + public routes) so a flaky public proxy can never leave this
+       tool with no result. Its status is real and measured; its final URL
+       stays unknown (same server-side-follow reason) and is said so. */
+    if(!hops.length && !finalUrl){
+      try{
+        const r = await fetchViaProxy(start, 15000);
+        finalStatus = r.status;
+      }catch(e){
+        out.innerHTML = '<div class="err"><b>Check failed:</b> Could not follow redirects for ' + esc(start) + ' — every fetch route failed (' + esc(e.message||e) + '). The site may block automated requests; retry later.</div>';
+        prog.textContent = "";
+        return;
       }
-    }catch(e){ /* ignore — final URL stays unknown */ }
+    }
     let html = "";
     if(hops.length){
       html += '<div style="overflow-x:auto"><table><tr><th>#</th><th>From</th><th>Status</th><th>To</th></tr>' + hops.map((h, i) =>
@@ -1758,10 +2163,16 @@ async function runRedirects(){
       }
     }
     if(finalUrl) html += '<p><b>Final URL:</b> ' + esc(finalUrl) + (finalStatus ? ' <span class="pill ok">HTTP ' + finalStatus + '</span>' : '') + '</p>';
+    else if(finalStatus) html += '<p><b>Final status:</b> <span class="pill ok">HTTP ' + finalStatus + '</span> <span class="muted">(final URL not reported — the proxy followed the redirect(s) on its own server)</span></p>';
     html += '<p class="muted">Note: free proxies follow redirects on their own servers, so intermediate hops are only shown when the proxy exposes them. If the chain above stops at one hop, the site redirected but the proxy did not report each step.</p>';
     out.innerHTML = html;
     prog.textContent = "";
-    await recordToolCheck("redirect-chain", start, hops.length + " hop(s) observed; final: " + (finalUrl||"unknown"));
+    try{
+      await recordToolCheck("redirect-chain", start, hops.length + " hop(s) observed; final: " + (finalUrl||"unknown"));
+    }catch(e){
+      /* A save failure must never erase a good result — small warning only. */
+      out.innerHTML += '<div class="warn">Result shown above, but it could not be saved to your history: ' + esc(e.message||e) + '</div>';
+    }
   }catch(e){
     out.innerHTML = '<div class="err"><b>Check failed:</b> ' + esc(e.message||e) + '</div>'; prog.textContent = "";
   }
@@ -1775,6 +2186,7 @@ async function runSchema(){
   const url = normaliseSite($("scUrl").value);
   if(!url){ out.innerHTML = '<div class="err">Enter a page URL first.</div>'; return; }
   if(!checkToolLimit(out)) return;
+  out.innerHTML = skeletonHtml(3);
   prog.textContent = "Fetching " + url + " …";
   try{
     const { doc } = await fetchPageDoc(url);
@@ -1860,6 +2272,7 @@ async function runRobotsFetch(){
       await recordToolCheck("robots", site, "no robots.txt (404)");
       return;
     }
+    if(!status || status < 200 || status >= 300) throw new Error("robots.txt fetch failed (HTTP " + (status||"proxy error") + "). The site may be blocking automated requests — nothing below is from the real robots.txt.");
     robotsGroups = parseRobots(text);
     const sm = [];
     robotsGroups.forEach(g => (g.sitemaps||[]).forEach(s => sm.push(s)));
@@ -1939,8 +2352,8 @@ $("smBtn").addEventListener("click", runSitemapGen);
 /* ---------- 7. Keyword Difficulty estimator ---------- */
 const AUTHORITY_DOMAINS = ["wikipedia.org","amazon.com","amazon.in","youtube.com","google.com","facebook.com","instagram.com","reddit.com","medium.com","forbes.com","nytimes.com","bbc.com","bbc.co.uk","linkedin.com","twitter.com","x.com","quora.com","stackoverflow.com","github.com","apple.com","microsoft.com","adobe.com","shopify.com","hubspot.com","moz.com","semrush.com","ahrefs.com","neilpatel.com","searchengineland.com","healthline.com","webmd.com","mayoclinic.org","investopedia.com","nerdwallet.com","bankrate.com","cnet.com","techcrunch.com","theverge.com","wired.com","coursera.org","udemy.com","khanacademy.org","etsy.com","ebay.com","walmart.com","target.com","theguardian.com","cnn.com"];
 async function estimateDifficulty(keyword){
-  const results = await ddgTopResults(keyword, 10);
-  if(!results.length) throw new Error("No DuckDuckGo results returned for that keyword.");
+  const results = await serpTopResults(keyword, 10);
+  if(!results.length) throw new Error("No search results returned for that keyword.");
   const kw = keyword.toLowerCase();
   let authority = 0, exact = 0, govEdu = 0;
   const domains = results.map(r => {
@@ -1963,7 +2376,7 @@ function briefHtml(b){
   html += b.targetWordCount ? '<p>Target length: <b>about ' + b.targetWordCount + ' words</b> (median of the top-ranking pages, rounded up — an estimate, not a rule).</p>' : '<p class="muted">Target length could not be estimated — the top pages could not be read.</p>';
   if(b.headings.length) html += '<h3>Suggested headings (from the top pages’ H2s)</h3><ul>' + b.headings.map(h => '<li>' + esc(h) + '</li>').join("") + '</ul>';
   if(b.questions.length) html += '<h3>Questions to answer (real Google suggestions)</h3><ul>' + b.questions.map(q => '<li>' + esc(q) + '</li>').join("") + '</ul>';
-  html += '<h3>Pages to beat</h3><table><tr><th>Page</th><th>H1 / title</th><th>Words (est.)</th></tr>' + b.competitors.map(p => '<tr><td>' + esc(p.url) + '</td><td>' + esc(p.h1||"—") + '</td><td>' + (p.words==null ? "could not read" : p.words.toLocaleString("en-GB")) + '</td></tr>').join("") + '</table></div>';
+  html += '<h3>Pages to beat</h3><table><tr><th>Page</th><th>H1 / title</th><th>Words (est.)</th></tr>' + b.competitors.map(p => '<tr><td>' + esc(p.url) + '</td><td>' + esc(p.words==null ? "could not read" : (p.h1||"—")) + '</td><td>' + (p.words==null ? "could not read" : p.words.toLocaleString("en-GB")) + '</td></tr>').join("") + '</table></div>';
   return html;
 }
 function briefText(b){
@@ -1972,7 +2385,7 @@ function briefText(b){
   if(b.headings.length){ lines.push("Suggested headings:"); b.headings.forEach(h => lines.push("- " + h)); lines.push(""); }
   if(b.questions.length){ lines.push("Questions to answer:"); b.questions.forEach(q => lines.push("- " + q)); lines.push(""); }
   lines.push("Pages to beat:");
-  b.competitors.forEach(p => lines.push("- " + p.url + " — " + (p.h1||"") + (p.words!=null ? " (" + p.words + " words, est.)" : "")));
+  b.competitors.forEach(p => lines.push("- " + p.url + " — " + (p.words==null ? "could not read" : (p.h1||"")) + (p.words!=null ? " (" + p.words + " words, est.)" : "")));
   return lines.join("\n");
 }
 async function recordBrief(keyword, brief){
@@ -1991,10 +2404,11 @@ async function runBrief(){
   const kw = ($("brKw").value||"").trim();
   if(!kw){ out.innerHTML = '<div class="err">Enter a target keyword first.</div>'; return; }
   if(!checkBriefLimit(out)) return;
+  out.innerHTML = skeletonHtml(3);
   prog.textContent = "Finding the top 5 pages for “" + kw + "” …";
   try{
-    const top = await ddgTopResults(kw, 5);
-    if(!top.length) throw new Error("No DuckDuckGo results returned for that keyword.");
+    const top = await serpTopResults(kw, 5);
+    if(!top.length) throw new Error("No search results returned for that keyword.");
     const pages = [];
     for(let i=0;i<top.length;i++){
       prog.textContent = "Reading page " + (i+1) + " of " + top.length + ": " + top[i].url + " …";
@@ -2056,12 +2470,18 @@ async function runCompare(){
   const aUrl = normaliseSite($("cpA").value), bUrl = normaliseSite($("cpB").value);
   if(!aUrl || !bUrl){ out.innerHTML = '<div class="err">Enter both URLs first.</div>'; return; }
   if(!checkCompareLimit(out)) return;
+  out.innerHTML = skeletonHtml(3);
   prog.textContent = "Comparing… (PageSpeed runs one after the other — up to a minute each)";
   const rows = [];
   for(const u of [aUrl, bUrl]){
     let psiScore = null, psiErr = null;
     try{ const p = await runPSI(u, "mobile"); psiScore = p.score; }catch(e){ psiErr = e.message||e; }
-    let title = "", desc = "", h1s = 0, words = null;
+    /* Genuine-report rule: when a page cannot be read, NOTHING about it is
+       measured or shown as data. The old code put the error message itself
+       into `title` and then rendered "75 chars" — the error's length
+       presented as the page's title length. Now title/desc/h1s/words all stay
+       null and the row says "Could not read — retry" with the reason. */
+    let title = null, desc = null, h1s = null, words = null, readErr = null;
     try{
       const { doc } = await fetchPageDoc(u, 15000);
       title = ((doc.querySelector("title")||{}).textContent||"").trim();
@@ -2069,11 +2489,15 @@ async function runCompare(){
       desc = m ? (m.getAttribute("content")||"") : "";
       h1s = doc.querySelectorAll("h1").length;
       words = pageWordCount(doc);
-    }catch(e){ title = "Could not read page: " + (e.message||e); }
-    rows.push({ url: u, psiScore, psiErr, title, desc, h1s, words });
+    }catch(e){ readErr = e.message||e; }
+    rows.push({ url: u, psiScore, psiErr, title, desc, h1s, words, readErr });
   }
   const cell = (r, key) => {
     if(key === 'psi') return r.psiScore==null ? '<span class="pill warn">Not checked</span><br><span class="muted">' + esc((r.psiErr||"").slice(0,140)) + '</span>' : '<span class="score" style="font-size:24px">' + r.psiScore + '</span><span class="muted"> /100</span>';
+    if(r.readErr){
+      if(key === 'title') return '<span class="pill warn">Could not read — retry</span><br><span class="muted">' + esc(r.readErr.slice(0,140)) + '</span>';
+      return '<span class="muted">Could not read</span>';
+    }
     if(key === 'title') return '<b>' + esc(r.title) + '</b><br><span class="muted">' + r.title.length + ' chars</span>';
     if(key === 'desc') return esc(r.desc||"(no meta description)") + '<br><span class="muted">' + r.desc.length + ' chars</span>';
     if(key === 'h1') return r.h1s + (r.h1s === 1 ? ' <span class="pill ok">exactly one</span>' : r.h1s === 0 ? ' <span class="pill bad">none</span>' : ' <span class="pill warn">more than one</span>');
@@ -2237,6 +2661,7 @@ async function runHealth(){
     }
   }
   prog.textContent = "Reading the page…";
+  out.innerHTML = skeletonHtml(3);
   try{
     const page = await fetchPageDoc(url, 20000);
     const doc = page.doc;
@@ -2319,7 +2744,7 @@ async function runBulkAudit(){
   }
   out.innerHTML = '<div style="overflow-x:auto"><table><tr><th>URL</th><th>PageSpeed (mobile)</th><th>LCP</th><th>CLS</th><th>Note</th></tr>' + rows.map(r =>
     '<tr><td>' + esc(r.url) + '</td><td>' + (r.score==null ? '<span class="pill warn">Not scored</span>' : '<b>' + r.score + '</b>/100') + '</td><td>' + esc(r.lcp||"—") + '</td><td>' + esc(r.cls||"—") + '</td><td class="muted">' + (r.error ? esc(r.error) : "") + '</td></tr>').join("") + '</table></div>'
-    + '<p class="muted">Successful checks were saved to audit history; failed checks are listed above. PageSpeed errors are shown exactly as Google returned them — a quota error (429) means retry later or add a free API key in Ad Revenue → Settings.</p>';
+    + '<p class="muted">Successful checks were saved to audit history; failed checks are listed above. PageSpeed errors are shown exactly as Google returned them — a quota error (429) means retry later or add a free API key in Workspace settings.</p>';
   prog.textContent = "";
   renderAuditHistory(); renderLimitNotes();
 }
@@ -2408,6 +2833,67 @@ $("revExportBtn").addEventListener("click", () => {
 });
 
 
+/* ---------- Site switcher (header) + global search ---------- */
+/* Up to 3 sites, stored in localStorage. The switcher defaults every tool's
+   URL input to the selected site (only empty inputs, or ones still holding
+   the previous default, are overwritten — a typed URL is never clobbered). */
+function normalizeSiteList(arr){
+  const out = [];
+  (arr||[]).forEach(s => { const u = SEOForgeCore.normaliseSite(s); if(u && !out.includes(u)) out.push(u); });
+  return out.slice(0,3);
+}
+function storedSites(){ return normalizeSiteList(LS.get("sites", [])); }
+function selectedSite(){
+  const sites = storedSites();
+  const sel = LS.get("selectedSite", "");
+  if(sel && sites.includes(sel)) return sel;
+  const p = SEOForgeCore.validatePreferences(LS.get("preferences", {}));
+  if(p.defaultSite && sites.includes(p.defaultSite)) return p.defaultSite;
+  return sites[0] || "";
+}
+function renderSiteSwitcher(){
+  const el = $("siteSwitcher"); if(!el) return;
+  const sites = storedSites();
+  const sel = selectedSite();
+  el.innerHTML = sites.length
+    ? sites.map(s => '<option value="' + esc(s) + '"' + (s===sel?" selected":"") + '>' + esc(s.replace(/^https?:\/\//,"")) + '</option>').join("")
+    : '<option value="">No site saved yet</option>';
+  el.value = sel;
+}
+function applySelectedSite(){
+  const site = selectedSite();
+  if(!site) return;
+  ["auditUrl","serpUrl","hcUrl","lvPage","blUrl","rdUrl","scUrl","rbSite","smSite","cpA"].forEach(id => {
+    const el = $(id);
+    if(el && (!el.value || el.value===el.dataset.defaultSite)){ el.value = site; el.dataset.defaultSite = site; }
+  });
+}
+function loadSiteSlots(){
+  const sites = storedSites();
+  ["siteSlot1","siteSlot2","siteSlot3"].forEach((id, i) => { const el = $(id); if(el) el.value = sites[i] || ""; });
+}
+/* Global search: one header input that jumps to a tool with the query
+   prefilled — a URL goes to Site Audit, anything else to the Keyword
+   Explorer. Pure target function, so it is unit testable. */
+function globalSearchTargets(q){
+  const s = String(q||"").trim();
+  if(!s) return [];
+  const isUrl = /^(https?:\/\/)?[a-z0-9-]+(\.[a-z0-9-]+)+(\/\S*)?$/.test(s) && s.includes(".");
+  const out = [];
+  if(isUrl) out.push({tab:"audit", label:"Audit " + s, field:"auditUrl", value: s.startsWith("http") ? s : "https://" + s});
+  out.push({tab:"keywords", label:"Explore keyword \u201c" + s + "\u201d", field:"seedKw", value:s});
+  return out;
+}
+function globalSearchGo(q){
+  const targets = globalSearchTargets(q);
+  if(!targets.length) return;
+  const t = targets[0];
+  const el = $(t.field); if(el) el.value = t.value;
+  showTab(t.tab, true);
+  const box = $("globalSearchResults"); if(box) box.innerHTML = "";
+  const inp = $("globalSearch"); if(inp) inp.value = "";
+}
+
 /* ---------- Workspace preferences and account recovery ---------- */
 function loadPreferences(){
   const p = SEOForgeCore.validatePreferences(LS.get("preferences", {}));
@@ -2421,8 +2907,11 @@ function applyPreferences(p){
   document.documentElement.dataset.theme = dark ? "dark" : "light";
   document.documentElement.dataset.density = p.density;
   document.documentElement.style.setProperty("--teal", p.accent);
+  renderSiteSwitcher();
+  applySelectedSite();
   $("workspaceName").textContent = p.brand;
   $("psiStrategy").value = p.strategy;
+  loadSiteSlots();
   ["auditUrl","serpUrl","hcUrl"].forEach(id => { const el=$(id); if(el && p.defaultSite && (!el.value || el.value===el.dataset.defaultSite || el.value===el.defaultValue)){el.value=p.defaultSite;el.dataset.defaultSite=p.defaultSite;} });
 }
 $("prefSave").addEventListener("click", () => {
@@ -2525,8 +3014,27 @@ function renderAll(){
   renderGoogleStatus();
   loadNotifPref();
 }
+/* ---------- init ---------- */
+/* Reload rules (v2.10.0): the tab in #tab= is restored; a saved session (or a
+   Google return with ?code=) opens the app shell straight away — the inline
+   gate in app.html already did this before first paint, this is the same
+   decision repeated in JS; a guest reload stays a guest (localStorage flag);
+   a logged-out reload shows the auth view, never a broken page. Nothing here
+   re-submits anything — saves happen only on button clicks, so a reload can
+   never duplicate a keyword, revenue entry or listing. An expired session
+   simply leaves the auth view up (initAuth finds no session, no spinner). */
+function initAppFromUrl(){
+  const tab = parseTabHash(location.hash);
+  const auth = parseAuthHash(location.hash);
+  const returning = /[?&]code=/.test(location.search||"");
+  if(auth){ showAuthView(auth); if(tab) showTab(tab); return; }
+  if(isGuestMode() || hasSavedSession() || returning){ showApp(); showTab(tab || "dashboard"); return; }
+  if(tab) showTab(tab);
+  showAuthView("signin");
+}
 handlePaypalReturn();
 renderAll();
 refreshAuthUI();
-showLanding();
+applyVersionLabels();
+initAppFromUrl();
 initAuth().then(handleGoogleReturn).catch(e => showBanner(e.message, "warn"));
