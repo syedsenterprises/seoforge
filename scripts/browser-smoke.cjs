@@ -76,7 +76,7 @@ function contrastRatio(fg,bg){
       /* 1b. Landing (v2.11.0): the three paths are real buttons, the showcase
          tabs swap, the try-it box answers, the pricing toggle swaps prices,
          the hero widget validates its input without any network. */
-      assert.equal(await page.locator('a.btn[href="./app.html#auth=signup"]').count(),6); /* header + hero + 3 pricing cards + closing — no repeats after sections */
+      assert.equal(await page.locator('a.btn[href="./app.html#auth=signup"]').count(),4); /* header + hero + pricing section + closing — one primary CTA per section */
       assert.ok(await page.locator(".landing-header img").isVisible());
       /* 1a2. Header nav is legible: the header is an accent tint in both
          themes (never a hardcoded dark block), and its text is the theme
