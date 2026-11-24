@@ -1035,6 +1035,47 @@ test("Auth view: heading and single primary button always match the mode",()=>{
   assert.equal(a.context.document.documentElement.dataset.authView,undefined); /* full header returns with the app */
   assert.equal(a.elements.get("authView").hidden,true);
 });
+/* ---------- v2.11.x: pre-render gate applies the auth mode at first paint ---------- */
+/* The mode switch in app.js only runs after the async session check, so without
+   the gate a #auth=signup link first paints the static sign-in form. The gate
+   runs the same mode switch inline, before first paint. */
+function gate(hash){
+  const elements=new Map();
+  for(const match of html.matchAll(/id="([^"]+)"/g)){
+    elements.set(match[1],{value:"",textContent:"",innerHTML:"",hidden:false,style:{},dataset:{},classList:{toggle(){}},listeners:{},addEventListener(name,cb){this.listeners[name]=cb;},querySelectorAll(){return[];},appendChild(){},focus(){},remove(){}});
+  }
+  const m=html.match(/<script>\n\/\* Pre-render gate:[\s\S]*?\}\)\(\);\n<\/script>/);
+  assert.ok(m,"pre-render gate script missing from app.html");
+  const context={console,URL,URLSearchParams,Date,Math,JSON,Promise,
+    localStorage:storage(),sessionStorage:storage(),
+    location:{href:"https://example.com/app.html"+hash,search:"",hash,reload(){}},
+    history:{replaceState(){},pushState(){}},
+    document:{getElementById:id=>{assert.ok(elements.has(id),"missing DOM element: "+id);return elements.get(id);},querySelectorAll:()=>[],addEventListener(){},createElement:()=>fakeEl(),documentElement:{dataset:{},style:{setProperty(){}}}}};
+  context.window=context;
+  vm.createContext(context);
+  vm.runInContext(m[0].replace(/<\/?script>/g,""),context);
+  return {context,elements};
+}
+test("Pre-render gate: #auth=signup paints the signup form before app.js runs",()=>{
+  const g=gate("#auth=signup");
+  assert.equal(g.elements.get("authViewTitle").textContent,"Create your free account");
+  assert.equal(g.elements.get("signInBtn").hidden,true);
+  assert.equal(g.elements.get("signUpBtn").hidden,false);
+  assert.equal(g.elements.get("forgotPassword").hidden,true);
+  assert.match(g.elements.get("authModeSwitch").textContent,/Already have an account\? Sign in/);
+  assert.equal(g.elements.get("authModeSwitch").href,"#auth=signin");
+});
+test("Pre-render gate: #auth=signin paints the sign-in form; no hash leaves the static sign-in form",()=>{
+  const g=gate("#auth=signin");
+  assert.equal(g.elements.get("authViewTitle").textContent,"Sign in to SEOForge");
+  assert.equal(g.elements.get("signInBtn").hidden,false);
+  assert.equal(g.elements.get("signUpBtn").hidden,true);
+  assert.equal(g.elements.get("forgotPassword").hidden,false);
+  assert.equal(g.elements.get("authModeSwitch").href,"#auth=signup");
+  const n=gate("");
+  assert.equal(n.elements.get("signInBtn").hidden,false);
+  assert.equal(n.elements.get("signUpBtn").hidden,false); /* gate touches nothing without a hash */
+});
 test("Auth view: Enter submits the shown mode, not always sign-in",async()=>{
   const a=app();
   a.run('cloudAvailable=true; sb={auth:{signUp:async()=>({data:{user:{identities:[]}},error:null}),signInWithPassword:async()=>({data:{},error:{message:"Invalid login credentials"}})}};');
@@ -1057,16 +1098,16 @@ test("Landing: the three paths are real buttons with the right destinations",()=
   assert.match(landing,/<a class="btn" href="\.\/app\.html#auth=signup">Create free account<\/a>/);
   assert.match(landing,/<a class="btn secondary" href="\.\/app\.html#auth=signin">Sign in<\/a>/);
   assert.match(landing,/<a class="text-link" href="\.\/app\.html#guest">Continue without an account<\/a>/); /* guest path is a quiet text link, not a button */
-  assert.equal((landing.match(/href="\.\/app\.html#auth=signup"/g)||[]).length,6); /* header + hero + 3 pricing cards + closing — no repeats after sections */
+  assert.equal((landing.match(/href="\.\/app\.html#auth=signup"/g)||[]).length,4); /* header + hero + pricing + closing — one per section, no repeats after sections */
   assert.doesNotMatch(landing,/assets\/app\.js/); /* the landing never loads the app */
   assert.match(landing,/assets\/core\.js/); /* the hero widget needs the shared scoring module */
 });
 /* ---------- v2.11.x: landing CTA discipline + mobile hamburger ---------- */
 test("Landing: account buttons live only where the user decides — no repeated pairs after sections",()=>{
   /* "Create free account" appears exactly 3 times: header, hero, closing.
-     Pricing cards use "Create a free account" (a different string). */
+     Pricing has one "Create a free account" button (a different string). */
   assert.equal((landing.match(/>Create free account</g)||[]).length,3);
-  assert.equal((landing.match(/href="\.\/app\.html#auth=signup"/g)||[]).length,6); /* header + hero + 3 pricing + closing */
+  assert.equal((landing.match(/href="\.\/app\.html#auth=signup"/g)||[]).length,4); /* header + hero + pricing + closing */
   assert.equal((landing.match(/href="\.\/app\.html#auth=signin"/g)||[]).length,1); /* header only */
   assert.equal((landing.match(/<div class="cta">/g)||[]).length,2); /* hero + closing only */
   assert.doesNotMatch(landing,/btn-ghost/); /* no ghost buttons left on the landing */
@@ -1194,8 +1235,13 @@ test("Landing: every nav and footer link resolves to a real target",()=>{
   const tabs=["audit","keywords","links","brief","gsc","ads","preferences"];
   for(const t of tabs) assert.ok(html.includes('data-tab="'+t+'"'),"missing app tab "+t);
   for(const t of tabs) assert.ok(landing.includes('./app.html#tab='+t),"footer missing "+t);
-  assert.ok(landing.includes('./privacy.html'));
-  assert.ok(landing.includes('./terms.html'));
+  assert.ok(landing.includes('./privacy'));
+  assert.ok(landing.includes('./terms'));
+  /* Canonical clean URLs: /privacy.html and /terms.html 307-redirect to
+     /privacy and /terms, so the footer links the canonical form and no
+     .html legal link may remain. */
+  assert.doesNotMatch(landing, /\.\/privacy\.html/);
+  assert.doesNotMatch(landing, /\.\/terms\.html/);
 });
 
 /* ---------- v2.11.0 round 3: human-audit fixes ---------- */
