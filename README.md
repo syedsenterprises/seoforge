@@ -13,6 +13,10 @@ Free tools on real public data, no invented numbers: site audits and PageSpeed, 
 
 Billing is live via PayPal. Guest mode works without an account; most tools need no account at all.
 
+## Sponsor
+
+SEOForge is built and maintained by Syed Shahed (Syeds Enterprises). If it saves you time, you can sponsor the work: https://github.com/sponsors/syedsenterprises
+
 ## Development
 
 Use Node 22 or later. Run npm run check and npm test, then serve the directory with python -m http.server 8000. Open http://localhost:8000. Guest mode works without Supabase. No Node dependencies or lockfile are required.
