@@ -696,8 +696,11 @@ try{var _uid=null;try{var _s=JSON.parse(localStorage.getItem("sb-mzbesucdnjecink
 <script>
 /* Pre-render gate: before app.js runs, decide which view paints first so a
    signed-in user never flashes the sign-in card (e.g. returning from PayPal)
-   and a logged-out reload never flashes the app. Reads the same Supabase
-   session token app.js checks in hasSavedSession(). No network, no CDN. */
+   and a logged-out reload never flashes the app. It also applies the auth
+   MODE from #auth= (signin/signup) at first paint: the mode switch in app.js
+   only runs after the async session check (initAuth), so without this a
+   #auth=signup link first paints the static sign-in form. Reads the same
+   Supabase session token app.js checks in hasSavedSession(). No network, no CDN. */
 (function(){
   try{
     var h = location.hash || "";
@@ -705,6 +708,20 @@ try{var _uid=null;try{var _s=JSON.parse(localStorage.getItem("sb-mzbesucdnjecink
     var auth = document.getElementById("authView");
     if(!shell || !auth) return;
     var guest = false, session = false, authIntent = /#auth=(signin|signup)/.test(h);
+    /* Mirror showAuthView(): title, the one primary button for the mode,
+       reset-password visibility and the mode-switch link. app.js re-applies
+       the same mode when initAppFromUrl() runs — this is idempotent. */
+    var am = h.match(/#auth=(signin|signup)/);
+    if(am){
+      var mode = am[1];
+      var at = document.getElementById("authViewTitle");
+      if(at) at.textContent = mode === "signup" ? "Create your free account" : "Sign in to SEOForge";
+      var si = document.getElementById("signInBtn"); if(si) si.hidden = mode !== "signin";
+      var su = document.getElementById("signUpBtn"); if(su) su.hidden = mode !== "signup";
+      var fp = document.getElementById("forgotPassword"); if(fp) fp.hidden = mode !== "signin";
+      var sw = document.getElementById("authModeSwitch");
+      if(sw){ sw.textContent = mode === "signup" ? "Already have an account? Sign in" : "No account yet? Create a free account"; sw.href = mode === "signup" ? "#auth=signin" : "#auth=signup"; }
+    }
     try{ guest = localStorage.getItem("syedSuite.guest") === "1" || /#guest\b/.test(h); if(guest) localStorage.setItem("syedSuite.guest", "1"); }catch(e){}
     try{
       var raw = localStorage.getItem("sb-mzbesucdnjecinkdawzy-auth-token");
