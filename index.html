@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SEOForge by Syeds Enterprises — SEO, Ads &amp; Links in One Place</title>
-<meta name="description" content="SEOForge: free SEO audit, keyword explorer, rank tracking, link checks, SERP preview, broken-link and redirect checks, schema detector, robots/sitemap tools, content briefs, competitor compare, Search Console &amp; Analytics, ad revenue hub, link marketplace and an in-site AI assistant (your own key). Free plan, Pro $9/month, Agency $29/month, or custom Business. Free data sources only, no invented numbers.">
+<meta name="description" content="Free SEO audit, keyword explorer, rank tracking and link checks on real public data — no invented numbers. Free plan, Pro $9/month, Agency $29/month.">
 <link rel="icon" href="./logo.png" type="image/png">
 <link rel="canonical" href="https://seoforge.syedsenterprises.org/">
 <meta property="og:title" content="SEOForge by Syeds Enterprises — SEO, Ads &amp; Links in One Place">
@@ -16,6 +16,23 @@
 <meta name="twitter:title" content="SEOForge by Syeds Enterprises — SEO, Ads &amp; Links in One Place">
 <meta name="twitter:description" content="Free SEO audit, keyword explorer, rank tracking, link checks, content briefs, Search Console &amp; Analytics, ad revenue hub and link marketplace. Free plan, Pro $9/month.">
 <meta name="twitter:image" content="https://seoforge.syedsenterprises.org/logo.png">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "SEOForge",
+  "applicationCategory": "BusinessApplication",
+  "operatingSystem": "Web",
+  "url": "https://seoforge.syedsenterprises.org/",
+  "description": "Free SEO audit, keyword explorer, rank tracking, link checks, content briefs, Search Console & Analytics, ad revenue hub and link marketplace — on real public data, no invented numbers.",
+  "author": { "@type": "Organization", "name": "Syed Enterprises", "url": "https://syedsenterprises.org" },
+  "offers": [
+    { "@type": "Offer", "name": "Free", "price": "0", "priceCurrency": "USD" },
+    { "@type": "Offer", "name": "Pro", "price": "9", "priceCurrency": "USD" },
+    { "@type": "Offer", "name": "Agency", "price": "29", "priceCurrency": "USD" }
+  ]
+}
+</script>
 <script>
 /* Apply the saved theme + accent before first paint (same key the app uses
    for guests: localStorage "syedSuite.preferences", set by Settings in the
@@ -51,7 +68,7 @@ try{var _uid=null;try{var _s=JSON.parse(localStorage.getItem("sb-mzbesucdnjecink
 </header>
 <main class="landing-main">
   <div class="hero">
-    <h2>SEO, ads &amp; links — in one place</h2>
+    <h1>SEO, ads &amp; links — in one place</h1>
     <p>Free SEO tools on real public data — no invented numbers. Site audits, keyword ideas, rank tracking, paid-link checks, ad revenue logging and a link marketplace.</p>
     <div class="cta">
       <a class="btn" href="./app.html#auth=signup">Create free account</a>
@@ -225,7 +242,6 @@ try{var _uid=null;try{var _s=JSON.parse(localStorage.getItem("sb-mzbesucdnjecink
           <li>Manual ad revenue logging</li>
           <li>Marketplace listings &amp; orders</li>
         </ul>
-        <a class="btn secondary" href="./app.html#auth=signup">Create a free account</a>
       </div>
       <div class="price-card pro">
         <h3>Pro</h3>
@@ -238,7 +254,6 @@ try{var _uid=null;try{var _s=JSON.parse(localStorage.getItem("sb-mzbesucdnjecink
           <li>Bulk audits (5 URLs at once)</li>
           <li>New features as they arrive</li>
         </ul>
-        <a class="btn" href="./app.html#auth=signup">Create a free account — then upgrade in the app</a>
         <p class="muted">Paid securely through PayPal. Cancel anytime from PayPal.</p>
       </div>
       <div class="price-card">
@@ -251,7 +266,6 @@ try{var _uid=null;try{var _s=JSON.parse(localStorage.getItem("sb-mzbesucdnjecink
           <li>Featured marketplace listing (shows first, "Featured" badge)</li>
           <li>Priority email support</li>
         </ul>
-        <a class="btn" href="./app.html#auth=signup">Create a free account — then upgrade in the app</a>
         <p class="muted">Paid securely through PayPal. Cancel anytime from PayPal.</p>
       </div>
       <div class="price-card business">
@@ -269,6 +283,7 @@ try{var _uid=null;try{var _s=JSON.parse(localStorage.getItem("sb-mzbesucdnjecink
         <p class="muted">No fixed price — tell us what you need and we set it up with you.</p>
       </div>
     </div>
+    <p style="text-align:center;margin-top:16px"><a class="btn" href="./app.html#auth=signup">Create a free account — then upgrade in the app</a></p>
     <p class="muted">Honest limits: PageSpeed Insights runs through SEOForge's server key — if Google's quota is exhausted, the app says so instead of showing a fake score. There is no free Ahrefs/Semrush backlink index, so SEOForge does not pretend to have one.</p>
   </div>
 
@@ -348,8 +363,8 @@ try{var _uid=null;try{var _s=JSON.parse(localStorage.getItem("sb-mzbesucdnjecink
     <div>
       <h4>Resources</h4>
       <ul>
-        <li><a href="./privacy.html">Privacy</a></li>
-        <li><a href="./terms.html">Terms</a></li>
+        <li><a href="./privacy">Privacy</a></li>
+        <li><a href="./terms">Terms</a></li>
         <li><a href="#faq">FAQ</a></li>
         <li><a href="#learn">Learn SEO</a></li>
         <li><a href="#hire">Hire Syed</a></li>
@@ -358,12 +373,13 @@ try{var _uid=null;try{var _s=JSON.parse(localStorage.getItem("sb-mzbesucdnjecink
     <div>
       <h4>Legal</h4>
       <ul>
-        <li><a href="./privacy.html">Privacy Policy</a></li>
-        <li><a href="./terms.html">Terms of Service</a></li>
+        <li><a href="./privacy">Privacy Policy</a></li>
+        <li><a href="./terms">Terms of Service</a></li>
+        <li><a href="#" onclick="window.seoforgeConsentReset();return false;">Cookie settings</a></li>
       </ul>
     </div>
   </div>
-  <p>SEOForge v2.11.0 — by Syed Enterprises. <a href="./privacy.html">Privacy Policy</a> · <a href="./terms.html">Terms of Service</a> · <a href="mailto:contact@syedsenterprises.org">contact@syedsenterprises.org</a></p>
+  <p>SEOForge v2.11.0 — by Syed Enterprises. <a href="./privacy">Privacy Policy</a> · <a href="./terms">Terms of Service</a> · <a href="mailto:contact@syedsenterprises.org">contact@syedsenterprises.org</a></p>
 </footer>
 <script>
 /* Signed-in users never see the landing: forward straight to the app.
@@ -592,7 +608,7 @@ try{var _uid=null;try{var _s=JSON.parse(localStorage.getItem("sb-mzbesucdnjecink
       + '<table><tr><th>Check</th><th>Result</th><th>Detail</th></tr>' + rows + '</table>'
       + '<p class="muted">How this is measured: the live page was read just now — the title, meta description, H1 count, image alt text and viewport above are the real values from the page. PageSpeed is Google\u2019s API, and its score varies run to run. The Speed Score is our own measurement — every sub-score shows its raw number.</p>'
       + '<p class="muted">Free audit — full history and tracking need a free account.</p>'
-      + '<div class="row"><button class="btn small" id="heroShareBtn" type="button">Share your score</button><a class="btn small" href="' + esc(saveLink) + '">Save this audit — create a free account</a></div>'
+      + '<div class="row"><button class="btn small" id="heroShareBtn" type="button">Share your score</button><a class="text-link" href="' + esc(saveLink) + '">Save this audit — create a free account</a></div>'
       + '<p class="muted" id="heroShareNote" role="status"></p></div>';
     document.getElementById("heroShareBtn").addEventListener("click", function(){
       var note = document.getElementById("heroShareNote");
@@ -613,5 +629,69 @@ try{var _uid=null;try{var _s=JSON.parse(localStorage.getItem("sb-mzbesucdnjecink
   input.addEventListener("keydown", function(e){ if(e.key==="Enter"){ e.preventDefault(); runHeroAudit(); } });
 })();
 </script>
+<!--
+  SEOForge cookie consent banner — lightweight, no external library.
+  ~2.5 KB. Paste the whole block immediately before </body> in index.html
+  (and, optionally, the same spot in app.html — see the note at the end).
+
+  BEHAVIOUR
+  - Shows once, fixed at the bottom, until the visitor chooses Accept or
+    Decline. The choice is stored in localStorage under "seoforge-consent"
+    as {"choice":"accepted"|"declined","date":"<ISO date>"}.
+  - Accept / Decline both dismiss the banner. The site currently sets NO
+    analytics or advertising cookies (only the strictly-necessary Supabase
+    sign-in session and saved preferences), so Decline loses the visitor
+    nothing today. If analytics is added later, the site must check this
+    stored choice before loading it — the key is already in place.
+  - "Privacy Policy" links to ./privacy. A "Cookie settings" footer link can
+    re-open the banner by calling window.seoforgeConsentReset() (see the
+    index.html patch file, optional step 5).
+  - No tracking, no network calls, no cookies written by the banner itself.
+-->
+<div id="sf-consent" hidden style="position:fixed;left:0;right:0;bottom:0;z-index:9999;background:#111827;color:#f9fafb;padding:14px 16px;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.5;box-shadow:0 -2px 12px rgba(0,0,0,.25)">
+  <div style="max-width:960px;margin:0 auto;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+    <p style="margin:0;flex:1 1 320px">We use only the cookies needed to sign you in and remember your preferences. We run no analytics yet — if we add it, we will ask first. See our <a href="./privacy" style="color:#5eead4">Privacy Policy</a>.</p>
+    <div style="display:flex;gap:8px">
+      <button type="button" id="sf-consent-accept" style="background:#0f766e;color:#fff;border:0;border-radius:6px;padding:8px 16px;font-size:14px;cursor:pointer">Accept</button>
+      <button type="button" id="sf-consent-decline" style="background:transparent;color:#f9fafb;border:1px solid #6b7280;border-radius:6px;padding:8px 16px;font-size:14px;cursor:pointer">Decline</button>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  var KEY = "seoforge-consent";
+  var bar = document.getElementById("sf-consent");
+  if (!bar) return;
+  function stored(){ try { return JSON.parse(localStorage.getItem(KEY) || "null"); } catch(e){ return null; } }
+  function save(choice){
+    try { localStorage.setItem(KEY, JSON.stringify({ choice: choice, date: new Date().toISOString().slice(0,10) })); } catch(e){}
+    bar.hidden = true;
+  }
+  var accept = document.getElementById("sf-consent-accept");
+  var decline = document.getElementById("sf-consent-decline");
+  if (accept) accept.addEventListener("click", function(){ save("accepted"); });
+  if (decline) decline.addEventListener("click", function(){ save("declined"); });
+  /* Re-open the banner (used by a "Cookie settings" footer link). */
+  window.seoforgeConsentReset = function(){
+    try { localStorage.removeItem(KEY); } catch(e){}
+    bar.hidden = false;
+  };
+  if (!stored()) bar.hidden = false;
+})();
+</script>
+<!--
+  PLACEMENT
+  1. index.html: paste this whole block immediately before </body>.
+     Do NOT paste it in <head> — the script reads elements that must exist.
+  2. app.html (optional, same placement): the app is where signed-in data
+     processing happens, so the banner belongs there too once the landing
+     version is verified. Same block, unchanged.
+  3. Verify: open the homepage in a private window — the banner must appear
+     at the bottom. Click Decline — it must disappear and stay gone on
+     reload. In devtools, localStorage "seoforge-consent" must read
+     {"choice":"declined","date":"2026-11-25"} (date = the day you clicked).
+     Clear that key and reload — the banner must reappear.
+-->
+
 </body>
 </html>
