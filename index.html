@@ -1,12 +1,28 @@
 <!DOCTYPE html>
 <html lang="en-GB">
 <head>
-  <script async src="https://www.googletagmanager.com/gtag/js?id=G-W0B26FH40W"></script>
   <script>
-      window.dataLayer = window.dataLayer || [];
-      function gtag(){dataLayer.push(arguments);}
-    gtag('js', new Date());
-    gtag('config', 'G-W0B26FH40W');
+    /* Google Analytics (GA4) — loads ONLY after the visitor accepts cookies.
+       Consent lives in localStorage under "seoforge-consent"
+       ({"choice":"accepted"|"declined"}); the banner script near </body>
+       calls window.seoforgeLoadAnalytics() on Accept. Never load the tag
+       before consent — the banner promises "we will ask first". */
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    window.seoforgeLoadAnalytics = function(){
+      if (window.seoforgeAnalyticsLoaded) return;
+      window.seoforgeAnalyticsLoaded = true;
+      var s = document.createElement("script");
+      s.async = true;
+      s.src = "https://www.googletagmanager.com/gtag/js?id=G-W0B26FH40W";
+      document.head.appendChild(s);
+      gtag("js", new Date());
+      gtag("config", "G-W0B26FH40W");
+    };
+    try {
+      var _c = JSON.parse(localStorage.getItem("seoforge-consent") || "null");
+      if (_c && _c.choice === "accepted") window.seoforgeLoadAnalytics();
+    } catch(e){}
   </script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -645,19 +661,21 @@ try{var _uid=null;try{var _s=JSON.parse(localStorage.getItem("sb-mzbesucdnjecink
   - Shows once, fixed at the bottom, until the visitor chooses Accept or
     Decline. The choice is stored in localStorage under "seoforge-consent"
     as {"choice":"accepted"|"declined","date":"<ISO date>"}.
-  - Accept / Decline both dismiss the banner. The site currently sets NO
-    analytics or advertising cookies (only the strictly-necessary Supabase
-    sign-in session and saved preferences), so Decline loses the visitor
-    nothing today. If analytics is added later, the site must check this
-    stored choice before loading it — the key is already in place.
+  - Accept / Decline both dismiss the banner. Accept loads Google Analytics
+    (GA4, Measurement ID G-W0B26FH40W) to understand visits; Decline means
+    no analytics at all. The tag is only loaded after an "accepted" choice
+    is stored — see window.seoforgeLoadAnalytics() in <head>, which checks
+    this stored choice before loading anything. Apart from analytics (only
+    after Accept), the site sets no advertising cookies — only the
+    strictly-necessary Supabase sign-in session and saved preferences.
   - "Privacy Policy" links to ./privacy. A "Cookie settings" footer link can
     re-open the banner by calling window.seoforgeConsentReset() (see the
     index.html patch file, optional step 5).
-  - No tracking, no network calls, no cookies written by the banner itself.
+  - No tracking, no network calls, no cookies written by the banner itself — analytics loads only after Accept (see above).
 -->
 <div id="sf-consent" hidden style="position:fixed;left:0;right:0;bottom:0;z-index:9999;background:#111827;color:#f9fafb;padding:14px 16px;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.5;box-shadow:0 -2px 12px rgba(0,0,0,.25)">
   <div style="max-width:960px;margin:0 auto;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-    <p style="margin:0;flex:1 1 320px">We use only the cookies needed to sign you in and remember your preferences. We run no analytics yet — if we add it, we will ask first. See our <a href="./privacy" style="color:#5eead4">Privacy Policy</a>.</p>
+    <p style="margin:0;flex:1 1 320px">We use only the cookies needed to sign you in and remember your preferences. We also use Google Analytics to understand visits — only if you accept. Declining means no analytics. See our <a href="./privacy" style="color:#5eead4">Privacy Policy</a>.</p>
     <div style="display:flex;gap:8px">
       <button type="button" id="sf-consent-accept" style="background:#0f766e;color:#fff;border:0;border-radius:6px;padding:8px 16px;font-size:14px;cursor:pointer">Accept</button>
       <button type="button" id="sf-consent-decline" style="background:transparent;color:#f9fafb;border:1px solid #6b7280;border-radius:6px;padding:8px 16px;font-size:14px;cursor:pointer">Decline</button>
@@ -676,8 +694,8 @@ try{var _uid=null;try{var _s=JSON.parse(localStorage.getItem("sb-mzbesucdnjecink
   }
   var accept = document.getElementById("sf-consent-accept");
   var decline = document.getElementById("sf-consent-decline");
-  if (accept) accept.addEventListener("click", function(){ save("accepted"); });
-  if (decline) decline.addEventListener("click", function(){ save("declined"); });
+  if (accept) accept.addEventListener("click", function(){ save("accepted"); if (window.seoforgeLoadAnalytics) window.seoforgeLoadAnalytics(); });
+  if (decline) decline.addEventListener("click", function(){ save("declined"); if (window.seoforgeAnalyticsLoaded) location.reload(); });
   /* Re-open the banner (used by a "Cookie settings" footer link). */
   window.seoforgeConsentReset = function(){
     try { localStorage.removeItem(KEY); } catch(e){}
