@@ -9,9 +9,11 @@ export async function paypal(path,method="GET",payload,requestId){
   const token=await request(paypalBase()+"/v1/oauth2/token",{method:"POST",headers:{Authorization:"Basic "+btoa(env("PAYPAL_CLIENT_ID")+":"+env("PAYPAL_CLIENT_SECRET")),"Content-Type":"application/x-www-form-urlencoded"},body:"grant_type=client_credentials"});
   return request(paypalBase()+path,{method,headers:{Authorization:"Bearer "+token.access_token,"Content-Type":"application/json",...(requestId?{"PayPal-Request-Id":requestId}:{})},...(payload?{body:JSON.stringify(payload)}:{})});
 }
-/* Plan map (v2.11.0): PayPal plan IDs → SEOForge tiers. Pro monthly keeps the
-   existing PAYPAL_PLAN_ID value (PAYPAL_PLAN_PRO_MONTHLY falls back to it);
-   the other three are deploy-time secrets — no plan ID is in this code. */
+/* Plan map (v2.11.0, + LAUNCH25 promo plans): PayPal plan IDs → SEOForge
+   tiers. Pro monthly keeps the existing PAYPAL_PLAN_ID value
+   (PAYPAL_PLAN_PRO_MONTHLY falls back to it); the other three are
+   deploy-time secrets — no plan ID is in this code. Promo plans grant the
+   same tier as the yearly plan they discount. */
 export function planToTier(){
   const m = {};
   const put = (id, tier) => { if(id) m[id] = tier; };
@@ -19,8 +21,10 @@ export function planToTier(){
      with just PAYPAL_PLAN_ID) must not throw and break billing/webhook. */
   put(optEnv("PAYPAL_PLAN_PRO_MONTHLY") || optEnv("PAYPAL_PLAN_ID"), "pro");
   put(optEnv("PAYPAL_PLAN_PRO_YEARLY"), "pro");
+  put(optEnv("PAYPAL_PLAN_PRO_YEARLY_PROMO"), "pro");
   put(optEnv("PAYPAL_PLAN_AGENCY_MONTHLY"), "agency");
   put(optEnv("PAYPAL_PLAN_AGENCY_YEARLY"), "agency");
+  put(optEnv("PAYPAL_PLAN_AGENCY_YEARLY_PROMO"), "agency");
   return m;
 }
 export function verifiedSubscription(subscription, plan, userId){
