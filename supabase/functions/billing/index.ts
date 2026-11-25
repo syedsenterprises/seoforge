@@ -40,9 +40,29 @@ serve(async req=>{
     "agency-monthly": () => optEnv("PAYPAL_PLAN_AGENCY_MONTHLY"),
     "agency-yearly": () => optEnv("PAYPAL_PLAN_AGENCY_YEARLY"),
   };
+  /* Promo code LAUNCH25: 25% off the FIRST YEAR on yearly plans only.
+     Pro Yearly $90 → $67.50 year 1, then $90/year. Agency Yearly $290 →
+     $217.50 year 1, then $290/year. The discounted first year is a trial
+     billing cycle on a separate PayPal plan; the promo plan IDs live in
+     Supabase secrets, never in this code. Monthly plans are never discounted. */
+  const PROMO_CODE = "LAUNCH25";
+  const PROMO_PLAN_KEYS = {
+    "pro-yearly": () => optEnv("PAYPAL_PLAN_PRO_YEARLY_PROMO"),
+    "agency-yearly": () => optEnv("PAYPAL_PLAN_AGENCY_YEARLY_PROMO"),
+  };
+  const promo = (input.promo || "").toString().trim().toUpperCase();
   const resolve = PLAN_KEYS[input.plan || "pro-monthly"];
   if(!resolve) throw new Error("Unknown plan — choose Pro or Agency in the app");
-  const planId = resolve();
+  let planId;
+  if(promo){
+    if(promo !== PROMO_CODE) throw new Error("That promo code is not valid.");
+    const promoResolve = PROMO_PLAN_KEYS[input.plan || "pro-monthly"];
+    if(!promoResolve) throw new Error("LAUNCH25 applies to yearly plans only — pick Pro Yearly or Agency Yearly.");
+    planId = promoResolve();
+    if(!planId) throw new Error("LAUNCH25 is not set up yet — try again shortly.");
+  }else{
+    planId = resolve();
+  }
   if(!planId) throw new Error("That plan is not set up yet — the owner is still creating it in PayPal. Free accounts keep working meanwhile.");
   const attempt=await db("rpc/checkout_attempt","POST",{p_user:user.id,p_previous:existing[0]?.subscription_id||null});
   /* Return URL: prefer a dedicated APP_URL secret; fall back to the Google
