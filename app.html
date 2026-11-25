@@ -1,12 +1,27 @@
 <!DOCTYPE html>
 <html lang="en-GB">
 <head>
-   <script async src="https://www.googletagmanager.com/gtag/js?id=G-W0B26FH40W"></script>
    <script>
-        window.dataLayer = window.dataLayer || [];
-        function gtag(){dataLayer.push(arguments);}
-      gtag('js', new Date());
-      gtag('config', 'G-W0B26FH40W');
+     /* Google Analytics (GA4) — loads ONLY after the visitor accepts cookies
+        on the landing page. Consent lives in localStorage under
+        "seoforge-consent" ({"choice":"accepted"|"declined"}); this page has
+        no banner of its own, so it only reads the stored choice. */
+     window.dataLayer = window.dataLayer || [];
+     function gtag(){dataLayer.push(arguments);}
+     window.seoforgeLoadAnalytics = function(){
+       if (window.seoforgeAnalyticsLoaded) return;
+       window.seoforgeAnalyticsLoaded = true;
+       var s = document.createElement("script");
+       s.async = true;
+       s.src = "https://www.googletagmanager.com/gtag/js?id=G-W0B26FH40W";
+       document.head.appendChild(s);
+       gtag("js", new Date());
+       gtag("config", "G-W0B26FH40W");
+     };
+     try {
+       var _c = JSON.parse(localStorage.getItem("seoforge-consent") || "null");
+       if (_c && _c.choice === "accepted") window.seoforgeLoadAnalytics();
+     } catch(e){}
    </script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
