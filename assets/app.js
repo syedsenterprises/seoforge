@@ -801,19 +801,24 @@ function renderLimitNotes(){
    Dashboard plan card (no new tab). Paid options call startCheckout(planKey);
    Business has no PayPal plan — it is a mailto to sales. Free is shown as the
    current plan for free users. */
-let upgradePickerOpen = false, upgradeBilling = "monthly";
+let upgradePickerOpen = false, upgradeBilling = "monthly", promoCodeVal = "";
 function planPickerHtml(){
   const toggle = '<div class="row" role="group" aria-label="Billing period"><button class="btn small' + (upgradeBilling==="monthly"?"":" secondary") + '" data-billing="monthly">Monthly</button><button class="btn small' + (upgradeBilling==="yearly"?"":" secondary") + '" data-billing="yearly">Yearly — save up to $58</button></div>';
-  const price = (m, y) => upgradeBilling==="yearly" ? "$" + y + "/year" : "$" + m + "/month";
-  const save = (m, y) => upgradeBilling==="yearly" ? " (save $" + (m*12 - y) + ")" : "";
+  /* LAUNCH25: 25% off the first year on yearly plans only. The discount is
+     applied server-side at checkout; this only changes the displayed price. */
+  const promoOn = promoCodeVal.trim().toUpperCase()==="LAUNCH25";
+  const money = v => "$" + (Number.isInteger(v) ? v : v.toFixed(2));
+  const price = (m, y, py) => upgradeBilling==="yearly" ? money(promoOn ? py : y) + "/year" : money(m) + "/month";
+  const save = (m, y, py) => upgradeBilling==="yearly" ? " (save " + money(m*12 - (promoOn ? py : y)) + (promoOn ? " first year" : "") + ")" : "";
+  const promoRow = '<div class="row"><label>Promo code <input id="promoCode" type="text" placeholder="LAUNCH25" autocomplete="off" autocapitalize="characters" spellcheck="false" value="' + esc(promoCodeVal) + '"></label><span class="muted">LAUNCH25 — 25% off your first year on yearly plans.</span></div>';
   const opt = (key, name, priceText, desc, cta, disabled) =>
     '<div class="listing"><b>' + name + '</b> — <span class="price">' + priceText + '</span><br><span class="muted">' + desc + '</span><br>'
     + (disabled ? '<button class="btn small secondary" disabled>Current plan</button>'
       : '<button class="btn small" data-checkout="' + key + '">' + cta + '</button>') + '</div>';
-  return '<h3>Choose a plan</h3>' + toggle
+  return '<h3>Choose a plan</h3>' + toggle + promoRow
     + opt("free", "Free", "$0", "5 audits/mo · 10 keywords · 5 link checks/mo · 3 briefs/mo · 3 compares/mo · 10 tool checks/mo · 5 AI messages/day · 1 site.", "", currentPlan==="free")
-    + opt(upgradeBilling==="yearly"?"pro-yearly":"pro-monthly", "Pro", price(9,90) + save(9,90), "Everything unlimited, unlimited AI messages · 3 sites.", "Upgrade to Pro — " + price(9,90), currentPlan==="pro")
-    + opt(upgradeBilling==="yearly"?"agency-yearly":"agency-monthly", "Agency", price(29,290) + save(29,290), "Everything in Pro · 10 sites · featured marketplace listings · priority email support.", "Upgrade to Agency — " + price(29,290), currentPlan==="agency")
+    + opt(upgradeBilling==="yearly"?"pro-yearly":"pro-monthly", "Pro", price(9,90,67.50) + save(9,90,67.50), "Everything unlimited, unlimited AI messages · 3 sites.", "Upgrade to Pro — " + price(9,90,67.50), currentPlan==="pro")
+    + opt(upgradeBilling==="yearly"?"agency-yearly":"agency-monthly", "Agency", price(29,290,217.50) + save(29,290,217.50), "Everything in Pro · 10 sites · featured marketplace listings · priority email support.", "Upgrade to Agency — " + price(29,290,217.50), currentPlan==="agency")
     + '<div class="listing"><b>Business</b> — <span class="price">Custom</span><br><span class="muted">Everything in Agency · up to 50 sites · custom limits · dedicated support · custom integrations · volume pricing.</span><br><a class="btn small secondary" href="mailto:contact@syedsenterprises.org?subject=SEOForge%20Business%20plan">Talk to sales</a></div>'
     + '<p class="muted">Payments are handled by PayPal — you can cancel anytime from PayPal. Business plans are set up by the owner after you talk to sales.</p>';
 }
@@ -842,6 +847,8 @@ function renderPlanCard(){
     el.innerHTML += planPickerHtml();
     el.querySelectorAll("[data-billing]").forEach(b => b.addEventListener("click", () => { upgradeBilling = b.dataset.billing; renderPlanCard(); }));
     el.querySelectorAll("[data-checkout]").forEach(b => b.addEventListener("click", () => startCheckout(b.dataset.checkout)));
+    const pi = el.querySelector("#promoCode");
+    if(pi) pi.addEventListener("change", () => { promoCodeVal = pi.value; renderPlanCard(); });
   }
 }
 /* The upgrade entry point (header button, plan card, limit prompts): opens the
@@ -858,12 +865,14 @@ function goUpgrade(){
 /* One paid plan checkout: creates the PayPal approval URL for the chosen
    plan key ("pro-monthly" | "pro-yearly" | "agency-monthly" | "agency-yearly")
    and hands the user to PayPal. The plan is applied server-side only, after
-   PayPal confirms — never from this page. */
+   PayPal confirms — never from this page. A promo code typed in the picker
+   is sent along and validated server-side; an invalid code stops checkout. */
 async function startCheckout(planKey){
   const token = await supabaseAccessToken();
   if(!token){ focusAuth(); showAuthMsg("Sign in before upgrading."); return; }
+  const promo = (document.getElementById("promoCode")?.value || "").trim();
   try{
-    const res = await fetchJsonTimeout(SUPABASE_URL+"/functions/v1/billing", 20000, {method:"POST",headers:{"Content-Type":"application/json", apikey:SUPABASE_PUBLISHABLE_KEY, Authorization:"Bearer "+token}, body:JSON.stringify({action:"checkout", plan:planKey})});
+    const res = await fetchJsonTimeout(SUPABASE_URL+"/functions/v1/billing", 20000, {method:"POST",headers:{"Content-Type":"application/json", apikey:SUPABASE_PUBLISHABLE_KEY, Authorization:"Bearer "+token}, body:JSON.stringify({action:"checkout", plan:planKey, promo})});
     const data = await res.json().catch(()=>({}));
     if(!res.ok || !data.url) throw new Error(data.error || "Checkout could not be started.");
     const url = new URL(data.url);
