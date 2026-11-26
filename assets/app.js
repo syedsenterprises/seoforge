@@ -2138,6 +2138,7 @@ $("mkAddBtn").addEventListener("click", async () => {
    until the OAuth client is created; the connect button says so honestly. */
 let lastAudit = null; /* { site, score, lcp, cls, date } — for the share buttons */
 let googleConnected = false;
+let gscSitesAutoLoaded = false; /* auto-load verified sites once per session when connected */
 
 function fetchJsonTimeout(url, ms, opts, scope){
   const c = new AbortController();
@@ -2259,6 +2260,10 @@ function setGoogleStatusUI(connected, note){
   const controls = $("gscControls"), ga4 = $("ga4Card");
   if(controls) controls.hidden = !connected;
   if(ga4) ga4.hidden = !connected;
+  /* When connected the button is a reconnect (switch account / refresh the
+     token), not a first-time connect — label it honestly so it does not look
+     as if the connection failed. */
+  document.querySelectorAll('[data-action="google-connect"]').forEach(b => { b.textContent = connected ? "Reconnect Google" : "Connect Google"; });
 }
 async function renderGoogleStatus(){
   if(!currentUser){ setGoogleStatusUI(false, "Sign in to SEOForge first, then connect Google."); return; }
@@ -2266,6 +2271,9 @@ async function renderGoogleStatus(){
   try{
     const data = await googleApi("status", {});
     setGoogleStatusUI(!!data.connected, data.connected ? "" : "Google is not connected.");
+    /* Auto-load the verified sites once per session when connected, so the
+       connected sites flow into My sites and every tab without manual entry. */
+    if(data.connected && !gscSitesAutoLoaded){ gscSitesAutoLoaded = true; loadGscSites(true); }
   }catch(e){
     setGoogleStatusUI(false, "Google connection is not available yet — " + (e.message || e));
   }
@@ -2310,7 +2318,7 @@ function defaultDateRange(){
   if($("gscStart") && !$("gscStart").value) $("gscStart").value = iso(start);
   if($("gscEnd") && !$("gscEnd").value) $("gscEnd").value = iso(end);
 }
-async function loadGscSites(){
+async function loadGscSites(quiet){
   const prog = $("gscProg"); prog.textContent = "Loading your verified sites from Search Console …";
   try{
     const data = await googleApi("sites", {});
@@ -2319,7 +2327,26 @@ async function loadGscSites(){
     if(!sites.length){ sel.innerHTML = '<option value="">No verified sites found for this Google account</option>'; prog.textContent = ""; return; }
     sel.innerHTML = sites.map(s => '<option value="' + esc(s.siteUrl) + '">' + esc(s.siteUrl) + '</option>').join("");
     prog.textContent = sites.length + " verified site(s) loaded.";
-  }catch(e){ prog.textContent = ""; $("gscOut").innerHTML = '<div class="err">Could not load sites: ' + esc(e.message || e) + '</div>'; }
+    /* Connected sites work in every tab: merge them into My sites so the
+       header switcher and every tool's URL input pick them up without the
+       user re-typing URLs. sc-domain:example.com -> https://example.com
+       (normaliseSite drops non-http schemes, so convert first). Manual
+       sites keep priority (they stay first); plan limits still apply via
+       activeSites(), so a Free user sees only their first site active. */
+    const gUrls = sites.map(s => {
+      const u = (s.siteUrl || "").trim();
+      if(/^sc-domain:/i.test(u)) return "https://" + u.slice(10);
+      return u;
+    });
+    const before = storedSites().length;
+    const merged = normalizeSiteList(storedSites().concat(gUrls));
+    if(merged.length > before){
+      LS.set("sites", merged);
+      renderSiteSwitcher();
+      applySelectedSite();
+      loadSiteSlots();
+    }
+  }catch(e){ prog.textContent = ""; if(!quiet) $("gscOut").innerHTML = '<div class="err">Could not load sites: ' + esc(e.message || e) + '</div>'; }
 }
 function gscRowsTable(title, rows, dimLabel){
   if(!rows.length) return '<h3>' + esc(title) + '</h3><p class="muted">No rows in this date range.</p>';
@@ -2376,7 +2403,7 @@ async function runGa4Report(){
       + '<p class="muted">Source: Google Analytics Data API (GA4), last 28 days, property ' + esc(prop) + '.</p>';
   }catch(e){ prog.textContent = ""; out.innerHTML = '<div class="err">GA4 report failed: ' + esc(e.message || e) + '</div>'; }
 }
-$("gscLoadSitesBtn").addEventListener("click", loadGscSites);
+$("gscLoadSitesBtn").addEventListener("click", () => loadGscSites());
 $("gscRunBtn").addEventListener("click", runGscReport);
 $("ga4LoadPropsBtn").addEventListener("click", loadGa4Props);
 $("ga4RunBtn").addEventListener("click", runGa4Report);
