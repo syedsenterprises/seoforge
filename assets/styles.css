@@ -1,6 +1,6 @@
 
   /* Accent system (v2.11.0 theme adaptivity): --accent is the ONE variable
-     that drives the design. Settings stores the pick (default #0f766e) and
+     that drives the design. Settings stores the pick (default #6d28d9) and
      applyPreferences / the landing pre-paint script set --accent (and --teal,
      kept as an alias) on <html>; every accent-coloured rule below reads
      --accent or a color-mix derivative of it, so a new pick re-themes the
@@ -13,7 +13,7 @@
      themes because its text is the theme ink); --accent-soft is the pale
      tint for notes/stats/hover states. */
   :root{
-    --accent:#0f766e;
+    --accent:#6d28d9;
     --accent-on:#ffffff; /* text on an accent surface — set per accent by core.js (dark ink for light accents) */
     --accent-dark:color-mix(in srgb, var(--accent) 82%, #000);
     --accent-ink:color-mix(in srgb, var(--accent) 85%, #000);
@@ -24,7 +24,7 @@
     --teal:var(--accent); --teal-dark:var(--accent-dark);
     --ink:#1f2937; --muted:#6b7280;
     --line:#e5e7eb; --bg:#f8fafc; --card:#ffffff; --warn:#b45309; --warn-bg:#fef3c7;
-    --bad:#b91c1c; --bad-bg:#fee2e2; --ok:#15803d; --ok-bg:#dcfce7; --radius:10px;
+    --bad:#b91c1c; --bad-bg:#fee2e2; --ok:#15803d; --ok-bg:#dcfce7; --radius:16px;
   }
   *{box-sizing:border-box}
   body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink);line-height:1.5}
@@ -394,3 +394,134 @@ a.btn-ghost{display:inline-block;background:transparent;color:var(--accent);bord
 html[data-theme=dark] .showcase,html[data-theme=dark] .cap-row,html[data-theme=dark] .blog-card,html[data-theme=dark] .why-card,html[data-theme=dark] .showcase-tabs button,html[data-theme=dark] .price-toggle button{background:var(--card);color:var(--ink)}
 html[data-theme=dark] .honest-gap{background:#451a03;color:#fde68a;border-color:#78350f}
 html[data-theme=dark] .footer-cols h4{color:var(--ink)}
+
+  /* ---- v2.12.0: combined design system (one theme, whole site) ----
+     Light clean base, indigo-violet gradient accents, emerald highlights,
+     dark dashboard surfaces for data panels. Gradient buttons and gradient
+     text are built from --accent, so a stored user pick (teal, purple…)
+     re-themes them too. */
+  :root{
+    --violet:#6d28d9; --violet-2:#8b5cf6; --violet-3:#a855f7;
+    --emerald:#059669; --emerald-bright:#34d399;
+    --dash:#0b1220; --dash-panel:#111c33; --dash-line:#1f2937; --dash-muted:#9ca3af;
+    --accent-grad:linear-gradient(135deg,var(--accent),color-mix(in srgb,var(--accent) 68%,#ffffff));
+  }
+  /* The app nav rule paints every <nav> white — inside the tinted landing
+     header that reads as a white strip. Keep the header one tint. */
+  .landing-header nav{background:transparent;border-bottom:0;position:static;}
+  /* Gradient headline accent (landing H1). */
+  .grad-text{background:linear-gradient(90deg,var(--accent),var(--violet-2),var(--violet-3));-webkit-background-clip:text;background-clip:text;color:transparent;}
+  /* Primary buttons: gradient over a solid accent, so the computed
+     background-color stays the accent (readability guards + smoke tests). */
+  button.btn:not(.secondary):not(.danger):not(.ghost),a.btn:not(.secondary):not(.danger):not(.ghost){background-color:var(--accent);background-image:var(--accent-grad);}
+  /* Hero: bigger headline, trust badges under the CTA. */
+  .hero h1{font-size:60px;line-height:1.05;letter-spacing:-1.5px;}
+  .trust-badges{display:flex;gap:10px;margin-top:22px;flex-wrap:wrap;justify-content:center;}
+  .trust-badges .badge{font-size:14px;font-weight:600;color:#374151;background:#f3f4f6;border:1px solid #e5e7eb;padding:7px 14px;border-radius:999px;}
+  /* Popular badge (pricing) — emerald, as in the combined design. */
+  .popular{background:var(--emerald);color:#fff;font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px;vertical-align:middle;margin-left:8px;}
+  .price-card.pro{box-shadow:0 10px 30px rgba(109,40,217,.12);}
+  /* Dark dashboard surfaces: data panels and the landing showcase.
+     Used as class="card dash-dark" so the card shape stays shared. */
+  .card.dash-dark{background:var(--dash);color:#f9fafb;border-color:var(--dash-line);box-shadow:0 24px 60px rgba(17,24,39,.35);}
+  .dash-dark h2,.dash-dark h3{color:#f9fafb;}
+  .dash-dark .muted{color:var(--dash-muted);}
+  .dash-dark a{color:#c4b5fd;}
+  .dash-dark table th{color:var(--dash-muted);border-bottom-color:var(--dash-line);}
+  .dash-dark table td{border-bottom-color:var(--dash-line);}
+  .dash-dark .pill{background:#1f2937;color:#d1d5db;border-color:#374151;}
+  .dash-dark .pill.good{background:#064e3b;color:#6ee7b7;border-color:#065f46;}
+  .dash-dark .pill.warn{background:#451a03;color:#fcd34d;border-color:#78350f;}
+  .dash-dark .pill.bad{background:#450a0a;color:#fca5a5;border-color:#7f1d1d;}
+  .dash-dark .sample-tag{background:#1f2937;color:#d1d5db;border-color:#374151;}
+  .dash-dark .showcase-tabs button{background:var(--dash-panel);color:#d1d5db;border-color:#374151;}
+  .dash-dark .showcase-tabs button.active{background:var(--accent);border-color:var(--accent);color:var(--accent-on);}
+  .dash-dark .showcase-tabs button:focus-visible{outline:2px solid #c4b5fd;}
+  .dash-dark .stat{background:var(--dash-panel);border-color:var(--dash-line);}
+  .dash-dark .stat b{color:#f9fafb;}
+  .dash-dark .bar-row .bar{background:var(--dash-line);}
+  .dash-dark .bar-row .bar i{background:var(--emerald-bright);}
+  .dash-dark .try-box input,.dash-dark input{background:var(--dash-panel);color:#f9fafb;border-color:var(--dash-line);}
+  .dash-dark .g-preview{background:var(--dash-panel);border-color:var(--dash-line);}
+  .dash-dark .g-preview p{color:#d1d5db;}
+  .dash-dark .btn.secondary{background:#1f2937;color:#f9fafb;border-color:#374151;}
+  .dash-dark .btn.danger{background:#7f1d1d;color:#fee2e2;border-color:#991b1b;}
+  /* Dark theme: keep the dashboard surfaces dark (the generic dark card
+     and dark showcase rules would otherwise win on specificity). */
+  html[data-theme="dark"] .card.dash-dark{background:var(--dash);border-color:var(--dash-line);}
+  html[data-theme="dark"] .dash-dark .muted{color:var(--dash-muted);}
+  html[data-theme="dark"] .dash-dark table th,html[data-theme="dark"] .dash-dark table td{border-bottom-color:var(--dash-line);}
+  html[data-theme="dark"] .dash-dark .stat{background:var(--dash-panel);border-color:var(--dash-line);}
+  html[data-theme="dark"] .dash-dark input{background:var(--dash-panel);color:#f9fafb;border-color:var(--dash-line);}
+  @media (max-width:900px){.hero h1{font-size:44px;}}
+  @media (max-width:560px){.hero h1{font-size:30px;}}
+
+  /* ---- v2.12.1: landing enrichment (sample dashboard + phone + animations) ----
+     Additive only: a sample dashboard showcase with a phone mockup, feature-
+     card polish, and CSS-only animations on the landing page. No copy, href,
+     CTA or behaviour changed; all new graphics are inline SVG/CSS, no new
+     requests. Animations rest on their final state in the markup, so content
+     stays visible if animations are disabled (the global reduced-motion rule
+     already switches them off). */
+  /* Sample dashboard showcase (landing only). */
+  #sampleDashboard{margin:18px 0}
+  #sampleDashboard h2{margin:0 0 6px}
+  .sample-showcase{display:flex;gap:24px;align-items:stretch;margin-top:14px}
+  .sample-dash{flex:1;min-width:0;padding:22px 24px;border-radius:20px}
+  .sample-dash-head{display:flex;justify-content:space-between;align-items:center;font-size:15px;font-weight:600;color:#d1d5db;gap:10px;flex-wrap:wrap}
+  .sample-live{color:var(--emerald-bright)}
+  .sample-charts{display:flex;gap:16px;margin-top:16px}
+  .sample-chart-box{flex:1;min-width:0;background:var(--dash-panel);border-radius:14px;padding:16px 18px}
+  .sample-chart-box .label{font-size:14px;color:var(--dash-muted);font-weight:600}
+  .sample-chart-box .big{font-size:30px;font-weight:800;margin:2px 0;color:#f9fafb}
+  .sample-chart-box .delta{font-size:14px;font-weight:600}
+  .sample-dash .up{color:var(--emerald-bright)}
+  .sample-dash .down{color:#f87171}
+  .sample-chart-box svg{width:100%;height:64px;margin-top:8px;display:block}
+  .sample-health{flex:0 0 190px;background:var(--dash-panel);border-radius:14px;padding:16px;text-align:center;color:#f9fafb}
+  .sample-health .ring-wrap{position:relative;width:120px;height:120px;margin:6px auto 4px}
+  .sample-health .ring-num{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+  .sample-health .ring-num b{font-size:34px;color:#f9fafb}
+  .sample-health .ring-num span{font-size:12px;color:var(--dash-muted)}
+  .sample-health .ok{color:var(--emerald-bright);font-weight:700;font-size:14px}
+  .sample-kw{margin-top:20px}
+  .sample-kw th:nth-child(2),.sample-kw th:nth-child(3),.sample-kw th:nth-child(4){text-align:center}
+  .sample-kw td.num{text-align:center;font-weight:700}
+  /* Phone mockup (landing only): pure CSS frame, same sample numbers. */
+  .phone-mock{flex:0 0 250px;background:var(--dash);border-radius:36px;padding:14px;color:#f9fafb;box-shadow:0 24px 60px rgba(17,24,39,.35)}
+  .phone-screen{background:var(--dash-panel);border-radius:26px;padding:18px 16px;height:100%}
+  .phone-top{display:flex;justify-content:space-between;font-size:13px;font-weight:700;color:#d1d5db}
+  .sample-showcase .phone-mock h3{font-size:20px;margin:16px 0 4px;color:#f9fafb}
+  .phone-stat{background:var(--dash);border-radius:12px;padding:12px;margin-top:12px}
+  .phone-stat .label{font-size:13px;color:var(--dash-muted)}
+  .phone-stat .big{font-size:24px;font-weight:800;color:#f9fafb}
+  .phone-stat .big span{font-size:14px}
+  .phone-stat .up{color:var(--emerald-bright)}
+  .phone-kw-line{font-size:14px;color:#d1d5db;margin-top:10px;line-height:1.5}
+  .phone-view{display:block;text-align:center;margin-top:16px;background-color:var(--accent);background-image:var(--accent-grad);color:var(--accent-on);font-weight:700;font-size:14px;padding:11px;border-radius:10px;text-decoration:none}
+  .phone-view:hover{filter:brightness(1.06)}
+  @media (max-width:700px){
+    .sample-showcase{flex-direction:column}
+    .sample-charts{flex-direction:column}
+    .sample-health{flex:1 1 auto}
+    .phone-mock{flex:1 1 auto;width:min(280px,100%);margin:0 auto}
+  }
+  /* Feature cards (landing only): icon chips + shadow + hover lift. */
+  .landing-main .feature{box-shadow:0 6px 20px rgba(17,24,39,.06);transition:transform .2s ease,box-shadow .2s ease}
+  .landing-main .feature svg{display:block;width:52px;height:52px;padding:11px;background:var(--accent-soft);border-radius:14px;margin-bottom:12px}
+  .landing-main .cap-row,.landing-main .blog-card,.landing-main .why-card,.landing-main .price-card{transition:transform .2s ease,box-shadow .2s ease}
+  .landing-main .feature:hover,.landing-main .cap-row:hover,.landing-main .blog-card:hover,.landing-main .why-card:hover,.landing-main .price-card:hover{transform:translateY(-3px);box-shadow:0 12px 28px rgba(17,24,39,.12)}
+  .landing-main a.btn:hover,.landing-main button.btn:hover{transform:translateY(-1px)}
+  /* Animations (landing only, CSS-only): hero fade-up, chart line draw-in,
+     health-ring draw. Final states live in the markup, so nothing hides if
+     animations are off. */
+  @keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+  .landing-main .hero h1,.landing-main .hero h2{animation:fadeUp .55s ease both}
+  .landing-main .hero p{animation:fadeUp .55s ease .08s both}
+  .landing-main .hero .cta{animation:fadeUp .55s ease .16s both}
+  .landing-main .hero .trust-badges{animation:fadeUp .55s ease .24s both}
+  .landing-main .hero .hero-audit{animation:fadeUp .55s ease .32s both}
+  @keyframes ringDraw{from{stroke-dashoffset:326.7}to{stroke-dashoffset:26.1}}
+  .ring-anim{animation:ringDraw 1.2s ease-out .3s both}
+  @keyframes lineDraw{from{stroke-dashoffset:100}to{stroke-dashoffset:0}}
+  .chart-line{stroke-dasharray:100;stroke-dashoffset:0;animation:lineDraw 1.1s ease-out .45s both}

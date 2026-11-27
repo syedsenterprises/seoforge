@@ -25,12 +25,12 @@
      the whole design through the --accent custom property (--teal is kept
      as an alias so older code reading it still sees the same value).
      resolveAccent is the single validator: anything that is not a 6-digit
-     hex colour falls back to the default teal #0f766e, so a stored or
+     hex colour falls back to the default violet #6d28d9, so a stored or
      imported value can never inject CSS. applyAccent writes both
      properties on a root element (document.documentElement in the app and
      on the landing) — the landing reads the same stored preferences, so
      both pages always agree. */
-  const DEFAULT_ACCENT = "#0f766e";
+  const DEFAULT_ACCENT = "#6d28d9";
   function resolveAccent(value) {
     return /^#[0-9a-f]{6}$/i.test(value || "") ? String(value).toLowerCase() : DEFAULT_ACCENT;
   }
@@ -38,7 +38,7 @@
      invisible (white #ffffff measured 1.00:1, yellow #ffff00 1.07:1 in the
      browser). Every accent surface that carries text therefore uses
      --accent-on: whichever of white (#ffffff) and dark ink (#111827) has the
-     higher WCAG contrast against the accent — white for teal/purple/black,
+     higher WCAG contrast against the accent — white for violet/purple/black,
      dark ink for white/yellow/orange (#ea580c: white 3.56:1, dark 4.98:1).
      --accent-dark / --accent-ink are the accent darkened (light theme) or
      lightened (dark theme) until they reach 4.5:1 against the card
