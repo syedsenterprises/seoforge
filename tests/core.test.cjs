@@ -13,21 +13,21 @@ test("CSV cells neutralize spreadsheet formulas and quote content",()=>{
   assert.equal(core.csvCell(null),'""');
 });
 test("Preferences validate arbitrary imported or stored values",()=>{
-  assert.deepEqual(core.validatePreferences({theme:"evil",accent:"red;display:none",density:"broken",defaultSite:"javascript:x",brand:"x".repeat(100)}),{theme:"light",accent:"#0f766e",density:"comfortable",brand:"x".repeat(60),defaultSite:"",strategy:"mobile"});
+  assert.deepEqual(core.validatePreferences({theme:"evil",accent:"red;display:none",density:"broken",defaultSite:"javascript:x",brand:"x".repeat(100)}),{theme:"light",accent:"#6d28d9",density:"comfortable",brand:"x".repeat(60),defaultSite:"",strategy:"mobile"});
 });
-test("Accent: resolveAccent validates, lowercases and falls back to default teal",()=>{
+test("Accent: resolveAccent validates, lowercases and falls back to default violet",()=>{
   assert.equal(core.resolveAccent("#7c3aed"),"#7c3aed");
   assert.equal(core.resolveAccent("#7C3AED"),"#7c3aed");
   assert.equal(core.resolveAccent("#ea580c"),"#ea580c");
-  for(const bad of [undefined,null,"","red","#fff","#12345g","red;display:none","#0f766e;--x:1"]) assert.equal(core.resolveAccent(bad),"#0f766e",String(bad));
+  for(const bad of [undefined,null,"","red","#fff","#12345g","red;display:none","#0f766e;--x:1"]) assert.equal(core.resolveAccent(bad),"#6d28d9",String(bad));
 });
 test("Accent: accentProperties sets --accent and the --teal alias to the same value",()=>{
   /* F1: accentProperties also sets --accent-on (text on accent surfaces)
      and --accent-dark/--accent-ink (readable accent text on cards). Purple
      keeps white ink and its own dark form; an invalid value falls back to
-     the default teal in every property. */
+     the default violet in every property. */
   assert.deepEqual(core.accentProperties("#7c3aed"),{"--accent":"#7c3aed","--teal":"#7c3aed","--accent-on":"#ffffff","--accent-dark":"#7c3aed","--accent-ink":"#7c3aed"});
-  assert.deepEqual(core.accentProperties("not-a-colour"),{"--accent":"#0f766e","--teal":"#0f766e","--accent-on":"#ffffff","--accent-dark":"#0f766e","--accent-ink":"#0f766e"});
+  assert.deepEqual(core.accentProperties("not-a-colour"),{"--accent":"#6d28d9","--teal":"#6d28d9","--accent-on":"#ffffff","--accent-dark":"#6d28d9","--accent-ink":"#6d28d9"});
 });
 test("Accent: light accents get dark ink and a darkened readable form (F1)",()=>{
   for(const a of ["#ffffff","#ffff00","#ea580c"]){
@@ -80,8 +80,8 @@ test("Accent: applyAccent writes both properties on the root and returns the res
      white-on-accent contrast is only 3.56:1) and the darkened readable form. */
   assert.equal(core.applyAccent(root,"#ea580c"),"#ea580c");
   assert.deepEqual(seen,{"--accent":"#ea580c","--teal":"#ea580c","--accent-on":"#111827","--accent-dark":"#c74b0a","--accent-ink":"#c74b0a"});
-  assert.equal(core.applyAccent(root,"red;display:none"),"#0f766e");
-  assert.deepEqual(seen,{"--accent":"#0f766e","--teal":"#0f766e","--accent-on":"#ffffff","--accent-dark":"#0f766e","--accent-ink":"#0f766e"});
+  assert.equal(core.applyAccent(root,"red;display:none"),"#6d28d9");
+  assert.deepEqual(seen,{"--accent":"#6d28d9","--teal":"#6d28d9","--accent-on":"#ffffff","--accent-dark":"#6d28d9","--accent-ink":"#6d28d9"});
   assert.equal(core.applyAccent(null,"#7c3aed"),"#7c3aed"); /* no root: no throw */
   assert.equal(core.applyAccent({},"#7c3aed"),"#7c3aed"); /* no style object: no throw */
 });
@@ -99,7 +99,7 @@ test("Accent: a stored accent survives the validate/store round-trip (persistenc
   const stored=JSON.stringify(core.validatePreferences({accent:"#7c3aed"}));
   assert.equal(core.validatePreferences(JSON.parse(stored)).accent,"#7c3aed");
   assert.equal(core.validatePreferences(JSON.parse(stored)).theme,"light");
-  assert.equal(core.validatePreferences({accent:"red"}).accent,"#0f766e");
+  assert.equal(core.validatePreferences({accent:"red"}).accent,"#6d28d9");
 });
 
 /* ---------- v2.11.0: Health Check rules as pure data (shared with the landing hero widget) ---------- */

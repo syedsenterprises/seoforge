@@ -1190,7 +1190,9 @@ test("Landing: the showcase is a labelled demo, never our own site's numbers",()
   assert.match(landing,/id="heroShareBtn"|Share your score/); /* the share action is in the widget script */
 });
 test("Landing: pricing has all four tiers with exact limits and the monthly/yearly toggle",()=>{
-  for(const t of ["Free","Pro","Agency","Business"]) assert.ok(landing.includes("<h3>"+t+"</h3>"));
+  for(const t of ["Free","Agency","Business"]) assert.ok(landing.includes("<h3>"+t+"</h3>"));
+  /* v2.12.0: the Pro tier carries the Popular badge inside its heading. */
+  assert.ok(landing.includes('<h3>Pro <span class="popular">Popular</span></h3>'));
   assert.match(landing,/data-billing="monthly"/);
   assert.match(landing,/data-billing="yearly"/);
   assert.match(landing,/Custom/);
