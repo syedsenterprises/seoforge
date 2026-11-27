@@ -315,14 +315,14 @@ function contrastRatio(fg,bg){
       };
       const defLanding=await measureLanding();
       const defApp=await measureApp();
-      assert.equal(defLanding.accentVar,"#0f766e","default --accent");
-      assert.equal(defLanding.tealVar,"#0f766e","--teal alias follows the default accent");
-      assert.equal(defLanding.heroBtn,"rgb(15, 118, 110)","default primary button is the default teal");
-      assert.equal(defLanding.ring,"rgb(15, 118, 110)","default Good score ring is the default teal");
-      assert.equal(defApp.primaryBtn,"rgb(15, 118, 110)","default app primary button is the default teal");
+      assert.equal(defLanding.accentVar,"#6d28d9","default --accent");
+      assert.equal(defLanding.tealVar,"#6d28d9","--teal alias follows the default accent");
+      assert.equal(defLanding.heroBtn,"rgb(109, 40, 217)","default primary button is the default violet");
+      assert.equal(defLanding.ring,"rgb(109, 40, 217)","default Good score ring is the default violet");
+      assert.equal(defApp.primaryBtn,"rgb(109, 40, 217)","default app primary button is the default violet");
       assert.equal(defApp.headerBg,defLanding.headerBg,"app and landing headers agree on the default accent");
       assert.equal(defApp.footerBg,defLanding.footerBg,"app and landing footers agree on the default accent");
-      assertReadable("default teal",defLanding);
+      assertReadable("default violet",defLanding);
       console.log("ACCENT-DEFAULT["+viewport.width+"]: header "+defLanding.headerBg+" footer "+defLanding.footerBg+" button/ring "+defLanding.heroBtn);
       /* F1: light accents (#ffffff, #ffff00) must get dark ink on accent
          surfaces — white text on a white/yellow button was 1.00:1 / 1.07:1.
@@ -376,7 +376,7 @@ function contrastRatio(fg,bg){
       }
       /* Leave the stored accent at the default so later steps (and the
          screenshots) see the standard theme. */
-      await page.evaluate(()=>{ localStorage.setItem("syedSuite.preferences",JSON.stringify({theme:"light",accent:"#0f766e",density:"compact",brand:"SEOForge release test",defaultSite:"https://example.com",strategy:"mobile"})); });
+      await page.evaluate(()=>{ localStorage.setItem("syedSuite.preferences",JSON.stringify({theme:"light",accent:"#6d28d9",density:"compact",brand:"SEOForge release test",defaultSite:"https://example.com",strategy:"mobile"})); });
       /* Console errors: only stub-induced failed-resource noise is excused. */
       const realConsoleErrors=consoleErrors.filter(t=>!/Failed to load resource|net::ERR_ABORTED|ERR_FAILED|ERR_INTERNET_DISCONNECTED/.test(t));
       if(consoleErrors.length) console.log("console errors at "+viewport.width+"px (raw):",JSON.stringify(consoleErrors));
