@@ -72,9 +72,13 @@ Supabase JS is pinned to 2.119.2.
 
 ## Release status
 
-Current version: **2.11.0** (+ v2.11.x patch). Live at https://seoforge.syedsenterprises.org/ (GitHub Pages mirror still serves the same build). Deploys go straight to main; CI Verify must pass on the final commit. The account/billing protection SQL (harden-existing.sql, release-usage.sql) is applied to the hosted project and was verified using rolled-back fixtures.
+Current version: **2.12.0**. Live at https://seoforge.syedsenterprises.org/ (GitHub Pages mirror still serves the same build). Deploys go straight to main; CI Verify must pass on the final commit. The account/billing protection SQL (harden-existing.sql, release-usage.sql) is applied to the hosted project and was verified using rolled-back fixtures.
 
 Billing is live via PayPal (live plans, sandbox lifecycle tested end to end). Google OAuth and email (Resend SMTP) are live and verified. Provider credentials and secrets live in Supabase secrets only — never put secrets in GitHub files. Read the operations guide before changing provider configuration.
+
+## v2.12.0
+
+Workflow Studio v2 — a standalone studio page with real WordPress REST publishing, a multi-draft library and Agent Runs. New app tabs: Schema Generator (builds JSON-LD from your own details) and Automation Hub (local reminders only, nothing sent or scheduled). A daily server-side automation workflow runs the production smoke test and a broken-link scan of the live site's key pages and opens one deduped GitHub issue per day on failure. CI actions bumped to v5 (Node 20 deprecation warnings gone).
 
 ## v2.11.0
 

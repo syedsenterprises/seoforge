@@ -27,7 +27,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SEOForge — App</title>
 <meta name="robots" content="noindex">
-<meta name="description" content="SEOForge v2.11.0: site audit, keyword explorer, rank tracking, link checks, SERP preview, broken-link and redirect checks, schema detector, robots/sitemap tools, content briefs, competitor compare, Search Console &amp; Analytics, ad revenue hub, link marketplace and an in-site AI assistant (your own key). Free plan, Pro $9/month, Agency $29/month, Business custom. Free data sources only, no invented numbers.">
+<meta name="description" content="SEOForge v2.12.0: site audit, keyword explorer, rank tracking, link checks, SERP preview, broken-link and redirect checks, schema detector, robots/sitemap tools, content briefs, competitor compare, Search Console &amp; Analytics, ad revenue hub, link marketplace and an in-site AI assistant (your own key). Free plan, Pro $9/month, Agency $29/month, Business custom. Free data sources only, no invented numbers.">
 <link rel="icon" href="./logo.png" type="image/png">
 <link rel="canonical" href="https://seoforge.syedsenterprises.org/app.html">
 <meta property="og:title" content="SEOForge by Syeds Enterprises — SEO, Ads &amp; Links in One Place">
@@ -133,7 +133,11 @@ try{var _uid=null;try{var _s=JSON.parse(localStorage.getItem("sb-mzbesucdnjecink
   <button data-tab="brief"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="2" width="10" height="12"/><line x1="6" y1="6" x2="10" y2="6"/><line x1="6" y1="9" x2="10" y2="9"/></svg>Content Briefs</button>
   <button data-tab="serp"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="3" width="12" height="9"/><line x1="6" y1="14" x2="10" y2="14"/><line x1="8" y1="12" x2="8" y2="14"/></svg>SERP Preview</button>
   <button data-tab="schema"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3c-2 0-2 2-2 2v2c0 1-1 1-1 2s1 1 1 2v2c0 0 0 2 2 2"/><path d="M10 3c2 0 2 2 2 2v2c0 1 1 1 1 2s-1 1-1 2v2c0 0 0 2-2 2"/></svg>Schema</button>
+  <button data-tab="schemagen"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="2" width="10" height="12"/><line x1="6" y1="6" x2="10" y2="6"/><line x1="6" y1="9" x2="10" y2="9"/><line x1="6" y1="12" x2="8" y2="12"/></svg>Schema Generator</button>
   <button data-tab="robots"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="3"/><path d="M8 1v3M8 12v3M1 8h3M12 8h3M3 3l2 2M11 11l2 2M13 3l-2 2M5 11l-2 2"/></svg>Robots &amp; Sitemap</button>
+  </div>
+  <div class="side-group"><span class="side-group-label">Reminders</span>
+  <button data-tab="automations"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/></svg>Automations</button>
   </div>
   <div class="side-group"><span class="side-group-label">Google</span>
   <button data-tab="gsc"><svg viewBox="0 0 16 16" aria-hidden="true"><line x1="3" y1="13" x2="3" y2="8"/><line x1="7" y1="13" x2="7" y2="5"/><line x1="11" y1="13" x2="11" y2="9"/></svg>Search Console</button>
@@ -153,6 +157,8 @@ try{var _uid=null;try{var _s=JSON.parse(localStorage.getItem("sb-mzbesucdnjecink
   <button data-tab="audit">Site Audit</button>
   <button data-tab="keywords">Keywords</button>
   <button data-tab="rank">Rank Tracker</button>
+  <button data-tab="schemagen">Schema Generator</button>
+  <button data-tab="automations">Automations</button>
   <button data-tab="ads">Ad Revenue</button>
 </nav>
 <main id="appMain"><p><a href="./studio.html">Workflow Studio · WordPress drafts and AI briefs</a></p>
@@ -698,6 +704,38 @@ try{var _uid=null;try{var _s=JSON.parse(localStorage.getItem("sb-mzbesucdnjecink
   </div>
 </section>
 
+<!-- ============ SCHEMA GENERATOR (v2.12.0) ============ -->
+<section class="tab" id="tab-schemagen">
+  <div class="card page-head">
+    <h2>Schema Generator</h2>
+    <p class="muted">Build JSON-LD structured data from your own details — nothing is filled in for you. Paste the result into a page's <code>&lt;script type="application/ld+json"&gt;</code> block and check it with Google's Rich Results Test.</p>
+    <label for="sgType">Schema type</label>
+    <select id="sgType"></select>
+    <div id="sgForm"></div>
+    <div id="sgHints"></div>
+    <div class="row">
+      <button class="btn" id="sgCopyBtn">Copy JSON-LD</button>
+      <button class="btn secondary" id="sgDownloadBtn">Download .json</button>
+    </div>
+    <p class="muted" id="sgStatus" role="status"></p>
+    <h3>Preview</h3>
+    <pre class="raw" id="sgPreview">{}</pre>
+  </div>
+</section>
+
+<!-- ============ AUTOMATION HUB (v2.12.0) ============ -->
+<section class="tab" id="tab-automations">
+  <div class="card page-head">
+    <h2>Automations</h2>
+    <p class="muted">Local reminders only — nothing here sends, posts or spends, and no server runs anything on a schedule. The daily server-side check lives in a GitHub workflow, not here. Everything below is computed from data already saved in this browser.</p>
+    <div id="autoList"></div>
+    <div class="row">
+      <button class="btn secondary" id="autoShowDismissedBtn">Show dismissed reminders</button>
+      <button class="btn secondary" id="autoRefreshBtn">Refresh</button>
+    </div>
+  </div>
+</section>
+
 <footer>
   SEOForge <span data-app-version></span> — by Syeds Enterprises. Signed-in users' data is stored in their Supabase account; logged-out use stays in this browser (localStorage). Integrations: Google Search Console + Analytics (read-only OAuth, tokens in Supabase), PayPal subscriptions (verified by webhook), email alerts (opt-in), AI assistant (runs on your own key). Free data sources only: Google PageSpeed Insights, Google Suggest, Bing search results (DuckDuckGo fallback), public CORS proxies. No backlink index is faked; no search volume is invented. <a href="./privacy.html">Privacy Policy</a> · <a href="./terms.html">Terms of Service</a>
 </footer>
@@ -759,6 +797,8 @@ try{var _uid=null;try{var _s=JSON.parse(localStorage.getItem("sb-mzbesucdnjecink
 </script>
 
 <script src="./assets/core.js"></script>
+<script src="./assets/schema-gen.js"></script>
+<script src="./assets/automations.js"></script>
 <script src="./assets/app.js"></script>
 </body>
 </html>

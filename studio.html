@@ -1,1 +1,180 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Workflow Studio · SEOForge</title><meta name="description" content="Prepare SEO briefs, plan content refreshes and export WordPress drafts."><link rel="stylesheet" href="./assets/styles.css"><link rel="stylesheet" href="./assets/studio.css"><script defer src="./assets/studio.js"></script></head><body><main><header class="studio-banner"><div><p>SEOForge / Publishing tools</p><h1>Workflow Studio</h1><p>Prepare a brief, refresh a page, or create a WordPress draft.</p><a href="./app.html#guest">Open SEO dashboard</a></div><ol class="studio-steps"><li>Collect findings</li><li>Review your prompt</li><li>Import your draft</li></ol></header><div class="studio-layout"><section class="card"><h2>Draft workspace</h2><label>Topic or post title<input id="studio-title" maxlength="240"></label><label>Draft or research notes<textarea id="studio-draft" maxlength="50000"></textarea></label><label>Review date<input type="date" id="studio-due"></label><button class="btn" id="studio-save">Save locally</button><button class="btn secondary" id="studio-export">Export WordPress XML</button><p>In WordPress, open Tools → Import → WordPress. Review the imported post under Posts → Drafts before publishing. This workspace saves one draft in this browser.</p></section><section class="card"><h2>AI prompt builder</h2><label>Workflow<select id="studio-task"><option value="brief">Search-intent brief</option><option value="refresh">Content refresh</option><option value="wordpress">WordPress publishing review</option></select></label><button class="btn" id="studio-prompt">Generate prompt</button><label>Review before sharing<textarea id="studio-output" readonly></textarea></label><button class="btn secondary" id="studio-copy">Copy prompt</button><p>Paste the prompt into Forge Assistant or your preferred AI tool. The studio does not send your notes to an AI provider.</p></section></div><p class="studio-layout" id="studio-status" role="status"></p></main></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workflow Studio · SEOForge</title>
+  <meta name="description" content="Prepare SEO briefs, plan content refreshes, publish to WordPress and run guided agent workflows.">
+  <link rel="stylesheet" href="./assets/styles.css">
+  <link rel="stylesheet" href="./assets/studio.css">
+  <script defer src="./assets/studio.js"></script>
+</head>
+<body>
+  <main>
+    <header class="studio-banner">
+      <div>
+        <p>SEOForge / Publishing tools</p>
+        <h1>Workflow Studio</h1>
+        <p>Prepare a brief, refresh a page, publish to WordPress, or run a guided agent workflow.</p>
+        <a href="./app.html#guest">Open SEO dashboard</a>
+      </div>
+      <ol class="studio-steps">
+        <li>Connect WordPress</li>
+        <li>Write and review a draft</li>
+        <li>Publish or export</li>
+      </ol>
+    </header>
+
+    <div class="studio-layout">
+      <section class="card" aria-labelledby="studio-conn-heading">
+        <h2 id="studio-conn-heading">WordPress connection</h2>
+        <p>Publishing talks directly from this browser to your own WordPress site. Nothing is sent to an SEOForge server.</p>
+        <label>Site URL
+          <input id="studio-wp-site" type="url" placeholder="https://example.com" autocomplete="url">
+        </label>
+        <label>WordPress username
+          <input id="studio-wp-user" type="text" autocomplete="username">
+        </label>
+        <label>Application Password
+          <input id="studio-wp-pass" type="password" autocomplete="off">
+        </label>
+        <p class="muted">In WordPress, go to Users, then Profile, then Application Passwords, and create one named SEOForge. Use that password here, not your login password.</p>
+        <label class="check-row">
+          <input id="studio-wp-save" type="checkbox">
+          <span>Remember this connection in this browser</span>
+        </label>
+        <p class="muted">If unchecked, the connection is kept only while this page is open. The Application Password is never sent anywhere except your own site.</p>
+        <div class="row">
+          <button class="btn" id="studio-wp-test" type="button">Test connection</button>
+          <button class="btn secondary" id="studio-wp-disconnect" type="button">Disconnect</button>
+        </div>
+        <p id="studio-wp-result" role="status"></p>
+      </section>
+
+      <section class="card" aria-labelledby="studio-library-heading">
+        <h2 id="studio-library-heading">Draft library</h2>
+        <p>Drafts live in this browser only. The review queue shows what is due first, overdue drafts at the top.</p>
+        <h3>Review queue</h3>
+        <div id="studio-review-queue">
+          <p>Nothing due for review.</p>
+        </div>
+        <h3>All drafts</h3>
+        <div id="studio-draft-list">
+          <p>No drafts yet. Write one in the editor and save it.</p>
+        </div>
+        <button class="btn secondary" id="studio-new" type="button">New draft</button>
+      </section>
+    </div>
+
+    <div class="studio-layout">
+      <section class="card" aria-labelledby="studio-editor-heading">
+        <h2 id="studio-editor-heading">Editor</h2>
+        <label>Topic or post title
+          <input id="studio-title" type="text" maxlength="240">
+        </label>
+        <label>Draft or research notes
+          <textarea id="studio-draft" maxlength="50000"></textarea>
+        </label>
+        <div class="row">
+          <label>Review date
+            <input type="date" id="studio-due">
+          </label>
+          <label>Status
+            <select id="studio-editor-status">
+              <option value="draft">Draft</option>
+              <option value="in review">In review</option>
+              <option value="ready">Ready</option>
+              <option value="published">Published</option>
+            </select>
+          </label>
+        </div>
+        <div class="row">
+          <button class="btn" id="studio-save" type="button">Save locally</button>
+          <button class="btn secondary" id="studio-export" type="button">Export WordPress XML</button>
+        </div>
+        <p class="muted">Saving is explicit, and the open editor also autosaves as you type. In WordPress, open Tools, then Import, then WordPress. Review the imported post under Posts, then Drafts, before publishing.</p>
+
+        <h3>Publish to WordPress</h3>
+        <p class="muted" id="studio-wp-note">Connect WordPress above to publish from here.</p>
+        <label>Publish status
+          <select id="studio-pub-status" data-wp-needs-conn>
+            <option value="draft">Draft</option>
+            <option value="published">Published</option>
+            <option value="scheduled">Scheduled</option>
+          </select>
+        </label>
+        <label>Schedule date and time
+          <input type="datetime-local" id="studio-pub-date" data-wp-needs-conn>
+        </label>
+        <label>Categories (comma separated names)
+          <input id="studio-pub-cats" type="text" data-wp-needs-conn>
+        </label>
+        <label>Tags (comma separated names)
+          <input id="studio-pub-tags" type="text" data-wp-needs-conn>
+        </label>
+        <label>Excerpt
+          <textarea id="studio-pub-excerpt" rows="3" data-wp-needs-conn></textarea>
+        </label>
+        <label>Slug
+          <input id="studio-pub-slug" type="text" data-wp-needs-conn>
+        </label>
+        <label>Featured image (media ID)
+          <input id="studio-pub-media" type="number" min="0" data-wp-needs-conn>
+        </label>
+        <p class="muted">Find the media ID in your WordPress Media Library: open the image and read the ID from the URL, after post=. Category and tag names must already exist on your site; names that do not match are left out and listed after publishing.</p>
+        <button class="btn" id="studio-publish" type="button" data-wp-needs-conn>Publish to WordPress</button>
+      </section>
+
+      <section class="card" aria-labelledby="studio-prompt-heading">
+        <h2 id="studio-prompt-heading">AI prompt builder</h2>
+        <label>Workflow
+          <select id="studio-task">
+            <option value="brief">Search-intent brief</option>
+            <option value="refresh">Content refresh</option>
+            <option value="wordpress">WordPress publishing review</option>
+          </select>
+        </label>
+        <button class="btn" id="studio-prompt" type="button">Generate prompt</button>
+        <label>Review before sharing
+          <textarea id="studio-output" readonly></textarea>
+        </label>
+        <button class="btn secondary" id="studio-copy" type="button">Copy prompt</button>
+        <p class="muted">Paste the prompt into Forge Assistant or your preferred AI tool. The studio does not send your notes to an AI provider.</p>
+      </section>
+    </div>
+
+    <div class="studio-layout">
+      <section class="card" aria-labelledby="studio-runs-heading">
+        <h2 id="studio-runs-heading">Agent runs</h2>
+        <p>A guided run for one page: fetch it, audit it, then brief, outline, draft and check it, one step at a time. Each step can run or be skipped, and every output stays editable. AI steps use your own key from the app Settings, through the same ai-agent service as Forge Assistant.</p>
+        <p class="muted">No key yet? Open the SEOForge app, go to Settings, and add a free key (NVIDIA or a free Gemini key from Google AI Studio), then return here.</p>
+        <label>Page URL
+          <input id="studio-run-url" type="url" placeholder="https://example.com/page">
+        </label>
+        <label>Topic
+          <input id="studio-run-topic" type="text" maxlength="300">
+        </label>
+        <label class="check-row">
+          <input id="studio-run-psi" type="checkbox">
+          <span>Also fetch a PageSpeed score during the audit</span>
+        </label>
+        <div class="row">
+          <button class="btn" id="studio-run-start" type="button">Start run</button>
+          <button class="btn secondary" id="studio-run-all" type="button">Run all</button>
+          <button class="btn danger" id="studio-run-stop" type="button">Stop</button>
+        </div>
+        <div id="studio-run-steps"></div>
+      </section>
+
+      <section class="card" aria-labelledby="studio-check-heading">
+        <h2 id="studio-check-heading">WordPress site check</h2>
+        <p>Checks whether the connected site exposes its REST API, a sitemap and robots.txt. Where the browser is blocked from reading the site directly, the check falls back to the fetch proxy.</p>
+        <button class="btn" id="studio-site-check" type="button">Check site</button>
+        <pre id="studio-site-result" class="raw" role="status">Run the check to see results here.</pre>
+      </section>
+    </div>
+
+    <p class="studio-layout" id="studio-status" role="status"></p>
+  </main>
+</body>
+</html>
