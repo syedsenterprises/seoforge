@@ -283,11 +283,14 @@ test("N2/N3: ai-agent allows a public provider host, blocks private and redirect
   const ok=await handler(agentReq("https://fda.gov"));
   assert.equal(ok.status,200);
   assert.equal((await ok.json()).reply,"hello");
-  const blocked=await handler(agentReq("http://[fc00::1]"));
+  const insecure=await handler(agentReq("http://provider.example/v1"));
+  assert.equal(insecure.status,400);
+  assert.match((await insecure.json()).error,/Only HTTPS/);
+  const blocked=await handler(agentReq("https://[fc00::1]"));
   assert.equal(blocked.status,400);
   assert.match((await blocked.json()).error,/Private addresses/);
   const redir=agentCtx(async(url)=>{
-    if(String(url).includes("provider.example")) return {status:307,ok:false,headers:{get:n=>n.toLowerCase()==="location"?"http://127.0.0.1/x":null},json:async()=>({})};
+    if(String(url).includes("provider.example")) return {status:307,ok:false,headers:{get:n=>n.toLowerCase()==="location"?"https://127.0.0.1/x":null},json:async()=>({})};
     return {status:200,ok:true,headers:{get:()=>null},json:async()=>({choices:[{message:{content:"hi"}}]})};
   });
   const r2=await redir(agentReq("https://provider.example/v1"));
