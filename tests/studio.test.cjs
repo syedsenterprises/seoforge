@@ -1,5 +1,13 @@
 const test = require("node:test"), assert = require("node:assert/strict");
+const fs = require("node:fs"), path = require("node:path");
 const {wordpress, promptFor, escapeXml, validateUrl, normalizeSiteUrl, slugify, wpBasicAuth, wpPostPayload, resolveTaxonomy, wpRestUrl, newDraft, isOverdue, sortDraftsByDue, reviewQueue, migrateLegacyDraft, agentEndpoint, agentModel, parseAiSettings, buildAgentRequest, auditHtml, stepPrompt, newRun, RUN_STEPS} = require("../assets/studio.js");
+
+test("Studio page applies the stored accent and theme like the landing", () => {
+  const html = fs.readFileSync(path.join(__dirname, "..", "studio.html"), "utf8");
+  assert.match(html, /syedSuite\.preferences/);
+  assert.match(html, /setProperty\("--accent"/);
+  assert.match(html, /data-theme/);
+});
 
 test("WordPress export preserves a draft and escapes markup", () => {
   const result = wordpress("A & B", "<script>alert(1)</script>");
