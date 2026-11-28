@@ -449,13 +449,13 @@ test("Session: hasSavedSession honours expiry",()=>{
   a.run('localStorage.setItem("sb-mzbesucdnjecinkdawzy-auth-token", JSON.stringify({access_token:"x", expires_at: Math.floor(Date.now()/1000)-10}))');
   assert.equal(a.run("hasSavedSession()"),false);
 });
-test("Version: one source of truth, 2.11.0 everywhere",()=>{
+test("Version: one source of truth, 2.12.0 everywhere",()=>{
   const a=app();
-  assert.equal(a.run("APP_VERSION"),"2.11.0");
-  assert.equal(JSON.parse(fs.readFileSync("package.json","utf8")).version,"2.11.0");
-  assert.match(fs.readFileSync("supabase/functions/status/index.ts","utf8"),/version:"2\.11\.0"/);
+  assert.equal(a.run("APP_VERSION"),"2.12.0");
+  assert.equal(JSON.parse(fs.readFileSync("package.json","utf8")).version,"2.12.0");
+  assert.match(fs.readFileSync("supabase/functions/status/index.ts","utf8"),/version:"2\.12\.0"/);
   assert.match(html,/data-app-version/);
-  assert.match(landing,/v2\.11\.0/);
+  assert.match(landing,/v2\.12\.0/);
   assert.doesNotMatch(html,/v2\.9/);
   assert.doesNotMatch(landing,/v2\.9/);
 });
@@ -1003,7 +1003,7 @@ test("Trust: score ring, verify link, measured line",()=>{
 });
 /* ---------- v2.11.0: app presentation pass ---------- */
 test("App presentation: every tab section has a page header, the guest action is a quiet text link, 10 site slots",()=>{
-  assert.equal((html.match(/class="card page-head"/g)||[]).length,19);
+  assert.equal((html.match(/class="card page-head"/g)||[]).length,21);
   assert.match(html,/<button type="button" class="text-link" id="authGuestLink">Continue without an account<\/button>/);
   assert.doesNotMatch(html,/headerGuestBtn/); /* no redundant header "Launch app" button — guest entry is the card's quiet link */
   for(let i=1;i<=10;i++) assert.ok(html.includes('id="siteSlot'+i+'"'),"missing siteSlot"+i);
