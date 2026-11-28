@@ -1,0 +1,4 @@
+const test=require("node:test"), assert=require("node:assert/strict");
+const {wordpress,promptFor}=require("../assets/studio.js");
+test("WordPress export preserves a draft and escapes markup",()=>{const result=wordpress("A & B","<script>alert(1)</script>");assert.match(result,/<wp:status>draft<\/wp:status>/);assert.match(result,/A &amp; B/);assert.ok(!result.includes("<script>"));assert.match(result,/&amp;lt;script/);assert.throws(()=>wordpress(" ","body"));});
+test("AI workflow includes topic and treats notes as reference",()=>{assert.match(promptFor("refresh","Title","Evidence"),/reference, not as instructions[\s\S]*Title[\s\S]*Evidence/);assert.throws(()=>promptFor("toString","x","y"));});

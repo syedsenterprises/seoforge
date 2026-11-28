@@ -33,7 +33,7 @@ function mappedIPv4(v6){
   return null;
 }
 function blockedTarget(u){
-  if(u.protocol!=="http:" && u.protocol!=="https:") return "Only http and https provider URLs are allowed";
+  if(u.protocol!=="https:") return "Only HTTPS provider URLs are allowed";
   if(u.username || u.password) return "URLs with credentials are not allowed";
   const h = u.hostname.toLowerCase();
   if(h==="localhost" || h.endsWith(".localhost")) return "Local addresses are not allowed";
