@@ -28,7 +28,7 @@ const SITE_SLOT_IDS = ["siteSlot1","siteSlot2","siteSlot3","siteSlot4","siteSlot
 /* Single version source — the header + footer labels are filled from here at load.
    package.json and supabase/functions/status/index.ts must carry the same value
    (enforced by tests/app.test.cjs). */
-const APP_VERSION = "2.11.0";
+const APP_VERSION = "2.12.0";
 /* Owner admin (v2.10.0): the owner's own account has no limits. This is the
    same client-side limit model the app already uses — the limits are UI
    guards, not server enforcement; the server still validates plan on
@@ -4019,3 +4019,182 @@ handlePaypalReturn();
 refreshAuthUI();
 applyVersionLabels();
 initAuth().then(() => { renderAll(); initAppFromUrl(); return handleGoogleReturn(); }).catch(e => { renderAll(); initAppFromUrl(); showBanner(e.message, "warn"); });
+
+/* ================= v2.12.0: Schema Generator + Automation Hub ================= */
+/* Append-only: nothing above is rewritten. The two new modules load before
+   app.js (see app.html) and expose window.SeoforgeSchemaGen /
+   window.SeoforgeAutomations; in the vm test harness they are absent, so
+   every block below guards on them and the app still boots. */
+VALID_TABS.push("schemagen", "automations");
+var SG = (typeof window !== "undefined" && window.SeoforgeSchemaGen) || null;
+var AU = (typeof window !== "undefined" && window.SeoforgeAutomations) || null;
+
+/* ---------- Schema Generator ---------- */
+function sgFieldHtml(f, prefix){
+  var id = prefix + "-" + f.key;
+  var input;
+  if(f.type === "textarea") input = '<textarea id="' + id + '" data-sg-key="' + f.key + '" rows="3"' + (f.placeholder ? ' placeholder="' + esc(f.placeholder) + '"' : "") + '></textarea>';
+  else input = '<input id="' + id + '" data-sg-key="' + f.key + '" type="' + (f.type === "date" ? "date" : f.type === "url" ? "url" : "text") + '"' + (f.placeholder ? ' placeholder="' + esc(f.placeholder) + '"' : "") + '>';
+  return '<label for="' + id + '">' + esc(f.label) + (f.required ? " *" : "") + '</label>' + input;
+}
+function sgRepeatHtml(f){
+  var rows = '<div data-sg-repeat="' + f.key + '">'
+    + '<div data-sg-row>' + f.fields.map(function(sf){ return sgFieldHtml(sf, "sg-" + f.key + "-0"); }).join("") + '</div></div>'
+    + '<button type="button" class="btn small secondary" data-sg-add="' + f.key + '">Add another</button>';
+  return '<div><p class="muted">' + esc(f.label) + (f.min ? " (at least " + f.min + ")" : "") + '</p>' + rows + '</div>';
+}
+function renderSgForm(){
+  if(!SG) return;
+  var type = $("sgType").value;
+  var fields = SG.SCHEMA_FORMS[type] || [];
+  $("sgForm").innerHTML = fields.map(function(f){
+    return f.type === "repeat" ? sgRepeatHtml(f) : sgFieldHtml(f, "sg");
+  }).join("");
+  $("sgForm").querySelectorAll("[data-sg-add]").forEach(function(b){
+    b.addEventListener("click", function(){
+      var f = (SG.SCHEMA_FORMS[$("sgType").value] || []).filter(function(x){ return x.key === b.dataset.sgAdd; })[0];
+      if(!f) return;
+      var wrap = b.parentElement.querySelector('[data-sg-repeat="' + f.key + '"]');
+      var n = wrap.querySelectorAll("[data-sg-row]").length;
+      var row = document.createElement("div");
+      row.setAttribute("data-sg-row", "");
+      row.innerHTML = f.fields.map(function(sf){ return sgFieldHtml(sf, "sg-" + f.key + "-" + n); }).join("")
+        + '<button type="button" class="btn small secondary" data-sg-remove>Remove</button>';
+      row.querySelector("[data-sg-remove]").addEventListener("click", function(){ row.remove(); updateSgPreview(); });
+      wrap.appendChild(row);
+      updateSgPreview();
+    });
+  });
+  updateSgPreview();
+}
+function collectSgData(){
+  var data = {};
+  $("sgForm").querySelectorAll("[data-sg-key]").forEach(function(el){
+    if(el.closest("[data-sg-repeat]")) return; /* repeat rows collected below */
+    data[el.dataset.sgKey] = el.value;
+  });
+  $("sgForm").querySelectorAll("[data-sg-repeat]").forEach(function(wrap){
+    var rows = [];
+    wrap.querySelectorAll("[data-sg-row]").forEach(function(row){
+      var item = {};
+      row.querySelectorAll("[data-sg-key]").forEach(function(el){ item[el.dataset.sgKey] = el.value; });
+      rows.push(item);
+    });
+    data[wrap.dataset.sgRepeat] = rows;
+  });
+  return data;
+}
+function updateSgPreview(){
+  if(!SG) return;
+  var type = $("sgType").value;
+  var data = collectSgData();
+  var built = SG.buildSchema(type, data);
+  $("sgPreview").textContent = JSON.stringify(built, null, 2);
+  var hints = SG.validateSchema(type, data);
+  $("sgHints").innerHTML = hints.length
+    ? '<div class="warn"><b>Check before using:</b><ul style="margin:6px 0;padding-left:20px">' + hints.map(function(h){ return "<li>" + esc(h.message) + "</li>"; }).join("") + "</ul></div>"
+    : '<p class="muted">Looks complete — copy or download it below.</p>';
+}
+function sgDownload(){
+  if(!SG) return;
+  var type = $("sgType").value;
+  var blob = new Blob([$("sgPreview").textContent], { type: "application/ld+json" });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement("a");
+  a.href = url; a.download = "schema-" + type + ".json"; a.click();
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+  $("sgStatus").textContent = "Downloaded schema-" + type + ".json.";
+}
+if(SG){
+  $("sgType").innerHTML = SG.SCHEMA_TYPES.map(function(t){ return '<option value="' + t.id + '">' + esc(t.label) + '</option>'; }).join("");
+  $("sgType").addEventListener("change", renderSgForm);
+  $("sgForm").addEventListener("input", updateSgPreview);
+  $("sgCopyBtn").addEventListener("click", function(){
+    try{
+      if(navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText($("sgPreview").textContent).then(function(){
+          $("sgStatus").textContent = "JSON-LD copied.";
+        }, function(){ $("sgStatus").textContent = "Copy failed — select the preview text manually."; });
+      } else { $("sgStatus").textContent = "Clipboard unavailable — select the preview text manually."; }
+    }catch(e){ $("sgStatus").textContent = "Copy failed — select the preview text manually."; }
+  });
+  $("sgDownloadBtn").addEventListener("click", sgDownload);
+  renderSgForm();
+}
+
+/* ---------- Automation Hub ---------- */
+/* Studio drafts: the library lives under "seoforge.studio.drafts.v2" (array
+   of {id,title,updatedAt,due,status}). Read-only here, never written. The
+   Studio page today saves a single draft under "seoforge.studio.v1", so a
+   lone v1 draft with a review date is shown too until the library exists. */
+function readStudioDrafts(){
+  var out = [];
+  try{
+    var arr = JSON.parse(localStorage.getItem("seoforge.studio.drafts.v2") || "null");
+    if(Array.isArray(arr)) out = arr;
+  }catch(e){}
+  if(!out.length){
+    try{
+      var one = JSON.parse(localStorage.getItem("seoforge.studio.v1") || "null");
+      if(one && one.due) out = [{ id: "studio-v1", title: one.title || "Studio draft", updatedAt: null, due: one.due, status: "draft" }];
+    }catch(e){}
+  }
+  return out;
+}
+var autoShowDismissed = false;
+function renderAutomations(){
+  if(!AU) return;
+  var rec = AU.loadRecord(localStorage);
+  var data = { drafts: readStudioDrafts(), keywords: S.get("keywords", []), audits: S.get("audits", []) };
+  var viewRec = autoShowDismissed ? { lastRuns: rec.lastRuns, dismissed: {} } : rec;
+  var items = AU.buildReminderItems(data, viewRec, AU.todayStr());
+  var el = $("autoList");
+  if(!items.length){
+    el.innerHTML = '<p class="muted">No reminders right now. Add a keyword to the Rank Tracker, run a Health Check, or give a Studio draft a review date — reminders appear here when they are due.</p>';
+    return;
+  }
+  el.innerHTML = '<table><tr><th>Reminder</th><th>Last run</th><th>Next due</th><th>Status</th><th></th></tr>' + items.map(function(it){
+    var st = AU.computeStatus(it, AU.todayStr());
+    var pill = st.status === "overdue" ? '<span class="pill bad">Overdue</span>' : st.status === "due" ? '<span class="pill warn">Due</span>' : '<span class="pill ok">On track</span>';
+    var detail = it.detail || "";
+    if(it.kind === "rank" && !it.lastRun) detail = "No rank checks yet — add a keyword in the Rank Tracker.";
+    if(it.kind === "health" && !it.lastRun) detail = "No health checks yet — run a Health Check.";
+    if(autoShowDismissed && rec.dismissed[it.id]) detail += " Dismissed " + fmtDate(rec.dismissed[it.id]) + ".";
+    var go = it.targetTab === "studio"
+      ? '<a href="./studio.html">Open Studio</a>'
+      : '<button type="button" class="btn small secondary" data-auto-goto="' + it.targetTab + '">Go to tool</button>';
+    return '<tr><td><b>' + esc(it.title) + '</b><br><span class="muted">' + esc(detail) + '</span></td>'
+      + '<td>' + (it.lastRun ? esc(fmtDate(it.lastRun)) : "Never") + '</td>'
+      + '<td>' + (st.nextDue ? esc(fmtDate(st.nextDue)) : "—") + '</td>'
+      + '<td>' + pill + '</td>'
+      + '<td><button type="button" class="btn small" data-auto-done="' + esc(it.id) + '">Mark done</button> '
+      + go + ' '
+      + '<button type="button" class="btn small secondary" data-auto-dismiss="' + esc(it.id) + '">Dismiss</button></td></tr>';
+  }).join("") + "</table>";
+  el.querySelectorAll("[data-auto-done]").forEach(function(b){
+    b.addEventListener("click", function(){ AU.markDone(localStorage, b.dataset.autoDone, AU.todayStr()); renderAutomations(); });
+  });
+  el.querySelectorAll("[data-auto-dismiss]").forEach(function(b){
+    b.addEventListener("click", function(){ AU.dismiss(localStorage, b.dataset.autoDismiss, AU.todayStr()); renderAutomations(); });
+  });
+  el.querySelectorAll("[data-auto-goto]").forEach(function(b){
+    b.addEventListener("click", function(){ showTab(b.dataset.autoGoto, true); });
+  });
+}
+if(AU){
+  $("autoRefreshBtn").addEventListener("click", renderAutomations);
+  $("autoShowDismissedBtn").addEventListener("click", function(){
+    autoShowDismissed = !autoShowDismissed;
+    $("autoShowDismissedBtn").textContent = autoShowDismissed ? "Hide dismissed reminders" : "Show dismissed reminders";
+    renderAutomations();
+  });
+}
+
+/* Route the two new tabs through the existing generic tab switch: wrap
+   showTab (append-only) so opening either tab renders its content. */
+var _showTab212 = showTab;
+showTab = function(name, push){
+  _showTab212(name, push);
+  if(name === "schemagen") updateSgPreview();
+  if(name === "automations") renderAutomations();
+};
