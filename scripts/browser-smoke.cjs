@@ -35,7 +35,7 @@ function contrastRatio(fg,bg){
   });
   await new Promise(resolve=>server.listen(0,"127.0.0.1",resolve));
   const base="http://127.0.0.1:"+server.address().port;
-  const browser=await chromium.launch();
+  const browser=await chromium.launch(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}); /* CHROME_PATH: local fallback to an already-installed Chromium (e.g. the ms-playwright cache); CI sets no CHROME_PATH so its behaviour is unchanged. */
   await fs.mkdir("test-results",{recursive:true});
   try {
     for(const viewport of [{width:1440,height:1000},{width:390,height:844}]){
@@ -201,6 +201,14 @@ function contrastRatio(fg,bg){
       await page.goto(base+"/app.html#tab=keyword",{waitUntil:"networkidle"});
       assert.ok(await page.locator("#tab-dashboard").isVisible(),"unknown tab falls back to dashboard");
       assert.match(await page.locator("#topBanner").innerText(),/Unknown section/);
+      /* 3c. Workflow Studio loads (v2.12.0) — its own page, same shell.
+         Placed AFTER 3b on purpose: 3b relies on a same-document hash
+         change (the app's hashchange handler shows the note); navigating
+         away to studio.html first would make 3b a fresh load, where the
+         note is not shown. */
+      await page.goto(base+"/studio.html",{waitUntil:"networkidle"});
+      assert.ok(await page.locator("#studio-library-heading").isVisible(),"studio library heading");
+      assert.ok(await page.locator("#studio-editor-heading").isVisible(),"studio editor heading");
       /* 4. Sidebar click (desktop) / bottom bar + drawer (mobile). */
       if(viewport.width>=900){
         await page.goto(base+"/app.html#guest",{waitUntil:"networkidle"});
