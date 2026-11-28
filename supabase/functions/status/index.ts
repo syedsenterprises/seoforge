@@ -6,7 +6,7 @@ Deno.serve(req=>{
     if(req.method==="OPTIONS") return json({},200,origin);
     if(req.method!=="GET") return json({error:"Method not allowed"},405,origin);
     const configured=(names)=>names.every(name=>!!Deno.env.get(name));
-    return json({version:"2.11.0",core:true,
+    return json({version:"2.12.0",core:true,
       google:configured(["GOOGLE_CLIENT_SECRET"]),
       /* Billing is ready when the credentials are set AND at least one plan
          is configured. The legacy PAYPAL_PLAN_ID alone must not be required:
