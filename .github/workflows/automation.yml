@@ -1,0 +1,52 @@
+name: Daily automation
+# Server-side daily check (v2.12.0): production smoke test + broken-link
+# scan of the live site's key pages. One run a day at a quiet UTC hour;
+# on failure it opens a single GitHub issue per day (deduped by title),
+# so a multi-day outage yields one open issue per day, never a flood.
+on:
+  schedule:
+    - cron: '30 3 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+  issues: write
+jobs:
+  live-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - id: smoke
+        name: Production smoke test
+        continue-on-error: true
+        run: node scripts/production-smoke.cjs
+      - id: links
+        name: Broken-link scan
+        continue-on-error: true
+        run: node scripts/link-scan.cjs
+      - name: Open issue on failure
+        if: ${{ steps.smoke.outcome == 'failure' || steps.links.outcome == 'failure' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SMOKE_OUTCOME: ${{ steps.smoke.outcome }}
+          LINKS_OUTCOME: ${{ steps.links.outcome }}
+        run: |
+          TITLE="Automation: live site check failed ($(date -u +%F))"
+          if gh issue list --state open --search "\"$TITLE\" in:title" --json title --jq '.[].title' | grep -qx "$TITLE"; then
+            echo "An open issue with that title already exists — skipping."
+            exit 0
+          fi
+          gh issue create --title "$TITLE" --body "Daily live-site check failed.
+
+          - Production smoke test: $SMOKE_OUTCOME
+          - Broken-link scan: $LINKS_OUTCOME
+
+          Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+      - name: Fail the run if any check failed
+        if: ${{ steps.smoke.outcome == 'failure' || steps.links.outcome == 'failure' }}
+        run: |
+          echo "smoke=${{ steps.smoke.outcome }} links=${{ steps.links.outcome }}"
+          exit 1
